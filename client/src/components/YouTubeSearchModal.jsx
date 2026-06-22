@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const SERVER_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+const SERVER_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_SERVER_URL || (import.meta.env.DEV ? 'http://localhost:3001' : 'https://vibesync-wpoa.onrender.com');
 
 export default function YouTubeSearchModal({ isOpen, onClose, roomId, socket }) {
   const [searchQuery, setSearchQuery] = useState('');
