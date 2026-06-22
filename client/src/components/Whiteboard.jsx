@@ -26,9 +26,16 @@ export default function Whiteboard({ roomId }) {
   const [textInput, setTextInput] = useState(null); // { x, y, value }
 
   // Sync ref values with state
-  useEffect(() => {
-    historyRef.current = history;
-  }, [history]);
+  const updateHistory = (newHistory) => {
+    historyRef.current = newHistory;
+    setHistory(newHistory);
+  };
+
+  const addToHistory = (element) => {
+    const newHistory = [...historyRef.current, element];
+    historyRef.current = newHistory;
+    setHistory(newHistory);
+  };
 
   useEffect(() => {
     redoRef.current = redoList;
@@ -108,19 +115,19 @@ export default function Whiteboard({ roomId }) {
     // Socket listeners
     const handleDrawEvent = (data) => {
       if (data.type === 'history-update') {
-        setHistory(data.history || []);
-        setTimeout(redrawCanvas, 50);
+        updateHistory(data.history || []);
+        redrawCanvas();
       } else if (data.type === 'live-segment') {
         const ctx = contextRef.current;
         if (ctx) drawElement(ctx, data);
-        setHistory((prev) => [...prev, data]);
+        addToHistory(data);
       }
     };
 
     const handleClearEvent = () => {
-      setHistory([]);
+      updateHistory([]);
       setRedoList([]);
-      setTimeout(redrawCanvas, 50);
+      redrawCanvas();
     };
 
     const handleRequestState = ({ requesterId }) => {
@@ -133,8 +140,8 @@ export default function Whiteboard({ roomId }) {
     };
 
     const handleReceiveState = ({ history: remoteHistory }) => {
-      setHistory(remoteHistory || []);
-      setTimeout(redrawCanvas, 50);
+      updateHistory(remoteHistory || []);
+      redrawCanvas();
     };
 
     if (socket) {
@@ -154,11 +161,6 @@ export default function Whiteboard({ roomId }) {
       }
     };
   }, [socket, roomId]);
-
-  // Triggered when history updates locally
-  useEffect(() => {
-    redrawCanvas();
-  }, [history]);
 
   const getCoordinates = (e) => {
     const canvas = canvasRef.current;
@@ -214,7 +216,7 @@ export default function Whiteboard({ roomId }) {
       };
 
       drawElement(ctx, segment);
-      setHistory((prev) => [...prev, segment]);
+      addToHistory(segment);
 
       if (socket) {
         socket.emit('whiteboard-draw', { roomId, type: 'live-segment', ...segment });
@@ -256,9 +258,10 @@ export default function Whiteboard({ roomId }) {
         size: brushSize,
       };
 
-      const updatedHistory = [...history, newShape];
-      setHistory(updatedHistory);
+      const updatedHistory = [...historyRef.current, newShape];
+      updateHistory(updatedHistory);
       setRedoList([]);
+      redrawCanvas();
 
       if (socket) {
         socket.emit('whiteboard-draw', { roomId, type: 'history-update', history: updatedHistory });
@@ -278,10 +281,11 @@ export default function Whiteboard({ roomId }) {
         size: brushSize,
       };
 
-      const updatedHistory = [...history, newText];
-      setHistory(updatedHistory);
+      const updatedHistory = [...historyRef.current, newText];
+      updateHistory(updatedHistory);
       setRedoList([]);
       setTextInput(null);
+      redrawCanvas();
 
       if (socket) {
         socket.emit('whiteboard-draw', { roomId, type: 'history-update', history: updatedHistory });
@@ -292,12 +296,13 @@ export default function Whiteboard({ roomId }) {
   };
 
   const handleUndo = () => {
-    if (history.length === 0) return;
-    const item = history[history.length - 1];
+    if (historyRef.current.length === 0) return;
+    const item = historyRef.current[historyRef.current.length - 1];
     
-    const newHistory = history.slice(0, -1);
-    setHistory(newHistory);
+    const newHistory = historyRef.current.slice(0, -1);
+    updateHistory(newHistory);
     setRedoList((prev) => [item, ...prev]);
+    redrawCanvas();
 
     if (socket) {
       socket.emit('whiteboard-draw', { roomId, type: 'history-update', history: newHistory });
@@ -305,12 +310,13 @@ export default function Whiteboard({ roomId }) {
   };
 
   const handleRedo = () => {
-    if (redoList.length === 0) return;
-    const item = redoList[0];
+    if (redoRef.current.length === 0) return;
+    const item = redoRef.current[0];
     
     setRedoList((prev) => prev.slice(1));
-    const newHistory = [...history, item];
-    setHistory(newHistory);
+    const newHistory = [...historyRef.current, item];
+    updateHistory(newHistory);
+    redrawCanvas();
 
     if (socket) {
       socket.emit('whiteboard-draw', { roomId, type: 'history-update', history: newHistory });
@@ -318,7 +324,7 @@ export default function Whiteboard({ roomId }) {
   };
 
   const handleClearBoard = () => {
-    setHistory([]);
+    updateHistory([]);
     setRedoList([]);
     redrawCanvas();
     if (socket) {

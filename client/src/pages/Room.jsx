@@ -44,6 +44,8 @@ function RoomContent({
     toggleVideo,
     startScreenShare,
     stopScreenShare,
+    isCameraLoading,
+    isMicLoading,
   } = useMedia();
 
   const { socket } = useSocket();
@@ -70,9 +72,19 @@ function RoomContent({
             <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={handleLeave}
-                className="text-xl font-black bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent tracking-wider hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2 group"
               >
-                VibeSync
+                <div className="relative w-8 h-8 flex items-center justify-center rounded-xl bg-gradient-to-tr from-violet-600 via-blue-500 to-cyan-400 p-[1px] shadow-[0_0_12px_rgba(139,92,246,0.3)]">
+                  <div className="w-full h-full bg-[#0a0118] rounded-[11px] flex items-center justify-center">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 12h1.5l2-5 3 10 3-10 2 6 1.5-2H21" className="stroke-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.8)]" />
+                      <polygon points="10 8 16 12 10 16" className="fill-violet-400 stroke-none drop-shadow-[0_0_4px_rgba(167,139,250,0.6)]" />
+                    </svg>
+                  </div>
+                </div>
+                <span className="text-sm sm:text-lg font-black bg-gradient-to-r from-violet-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent tracking-widest uppercase drop-shadow-[0_0_10px_rgba(6,182,212,0.2)]">
+                  VibeSync
+                </span>
               </button>
               <div className="w-px h-6 bg-white/10 hidden sm:block" />
               <div className="hidden sm:block min-w-0">
@@ -404,14 +416,22 @@ function RoomContent({
         {/* Microphone Toggle */}
         <button
           onClick={toggleAudio}
+          disabled={isMicLoading}
           className={`p-3 rounded-full border transition-all duration-300 ${
+            isMicLoading ? 'opacity-50 cursor-wait' : ''
+          } ${
             isAudioEnabled
               ? 'bg-violet-500/20 border-violet-500/40 text-violet-400 hover:bg-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.3)]'
               : 'bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30'
           }`}
           title={isAudioEnabled ? 'Mute Mic' : 'Unmute Mic'}
         >
-          {isAudioEnabled ? (
+          {isMicLoading ? (
+            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : isAudioEnabled ? (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
@@ -426,14 +446,22 @@ function RoomContent({
         {/* Camera Toggle */}
         <button
           onClick={toggleVideo}
+          disabled={isCameraLoading}
           className={`p-3 rounded-full border transition-all duration-300 ${
+            isCameraLoading ? 'opacity-50 cursor-wait' : ''
+          } ${
             isVideoEnabled
               ? 'bg-violet-500/20 border-violet-500/40 text-violet-400 hover:bg-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.3)]'
               : 'bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30'
           }`}
           title={isVideoEnabled ? 'Turn Off Camera' : 'Turn On Camera'}
         >
-          {isVideoEnabled ? (
+          {isCameraLoading ? (
+            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : isVideoEnabled ? (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 00-2 2z" />
             </svg>

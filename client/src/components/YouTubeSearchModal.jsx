@@ -109,6 +109,34 @@ export default function YouTubeSearchModal({ isOpen, onClose, roomId, socket }) 
           </div>
         </div>
 
+        {/* Direct Link Paste Section (Mobile-friendly, auto-loads on paste) */}
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-4 shrink-0">
+          <label className="block text-xs font-bold text-violet-400 uppercase tracking-widest mb-2">
+            Direct Link Paste
+          </label>
+          <input
+            type="text"
+            className="w-full px-4 py-2.5 bg-black/20 border border-white/10 rounded-xl text-xs text-gray-800 dark:text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            placeholder="Paste YouTube URL here (loads automatically)..."
+            onChange={(e) => {
+              const url = e.target.value.trim();
+              if (url && isYouTubeUrl(url)) {
+                if (socket) {
+                  socket.emit('video-change', {
+                    roomId,
+                    videoUrl: url,
+                    videoTitle: 'YouTube Video',
+                  });
+                }
+                onClose();
+              }
+            }}
+          />
+          <p className="text-[10px] text-gray-400 mt-1.5">
+            Pasting a valid YouTube URL will load it instantly without any extra clicks.
+          </p>
+        </div>
+
         {/* Search Bar */}
         <form onSubmit={handleSearch} className="flex gap-2 mb-6">
           <div className="flex-1 relative">

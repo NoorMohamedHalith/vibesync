@@ -374,13 +374,14 @@ function Home() {
       </section>
 
       {/* ===== FOOTER ===== */}
-      <footer className="text-center text-xs text-gray-400 dark:text-gray-600 pb-8">
-        <p>
-          Built with{' '}
-          <span className="text-red-400">♥</span>{' '}
-          using React, Socket.IO &amp; YouTube IFrame API
+      <footer className="text-center text-xs text-gray-400 dark:text-gray-500 pb-8 mt-12">
+        <p className="font-semibold text-gray-500 dark:text-gray-400">
+          Built with <span className="text-red-500 animate-pulse">❤️</span> by{' '}
+          <span className="bg-gradient-to-r from-violet-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent font-bold tracking-wide drop-shadow-[0_0_8px_rgba(6,182,212,0.4)]">
+            Noor Mohamed Halith
+          </span>
         </p>
-        <p className="mt-1">VibeSync &copy; {new Date().getFullYear()}</p>
+        <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-600">VibeSync &copy; {new Date().getFullYear()}</p>
       </footer>
     </div>
   );

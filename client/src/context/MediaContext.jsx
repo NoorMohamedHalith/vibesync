@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
+import { useToast } from './ToastContext';
 
 const MediaContext = createContext(undefined);
 
@@ -9,6 +10,8 @@ const ICE_SERVERS = [
 ];
 
 export function MediaProvider({ children, socket, roomId, username }) {
+  const { addToast } = useToast();
+
   // Local state
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
@@ -20,6 +23,10 @@ export function MediaProvider({ children, socket, roomId, username }) {
   const [selectedAudioDevice, setSelectedAudioDevice] = useState('');
   const [selectedVideoDevice, setSelectedVideoDevice] = useState('');
   const [sharedFiles, setSharedFiles] = useState([]);
+
+  // Loading states
+  const [isCameraLoading, setIsCameraLoading] = useState(false);
+  const [isMicLoading, setIsMicLoading] = useState(false);
 
   // Refs
   const localStreamRef = useRef(null);
@@ -219,6 +226,7 @@ export function MediaProvider({ children, socket, roomId, username }) {
 
   // --- Toggle Audio ---
   const toggleAudio = useCallback(async () => {
+    setIsMicLoading(true);
     try {
       const newState = !isAudioEnabled;
       if (newState) {
@@ -255,11 +263,15 @@ export function MediaProvider({ children, socket, roomId, username }) {
       }
     } catch (err) {
       console.error('[VibeSync] toggleAudio error:', err);
+      addToast({ type: 'error', message: 'Microphone access denied or audio device in use. Please check browser permissions.' });
+    } finally {
+      setIsMicLoading(false);
     }
-  }, [isAudioEnabled, socket, roomId]);
+  }, [isAudioEnabled, socket, roomId, addToast]);
 
   // --- Toggle Video ---
   const toggleVideo = useCallback(async () => {
+    setIsCameraLoading(true);
     try {
       if (!localStreamRef.current) {
         localStreamRef.current = new MediaStream();
@@ -311,11 +323,18 @@ export function MediaProvider({ children, socket, roomId, username }) {
       }
     } catch (err) {
       console.error('[VibeSync] Camera toggle failed:', err);
+      addToast({ type: 'error', message: 'Camera access denied or camera device in use. Please check browser permissions.' });
+    } finally {
+      setIsCameraLoading(false);
     }
-  }, [isVideoEnabled, socket, roomId, selectedVideoDevice, renegotiatePeer]);
+  }, [isVideoEnabled, socket, roomId, selectedVideoDevice, renegotiatePeer, addToast]);
 
   // --- Screen Share ---
   const startScreenShare = useCallback(async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      addToast({ type: 'warning', message: 'Screen sharing is not supported by your current browser/device (common on mobile browsers).' });
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { cursor: 'always' },
@@ -343,8 +362,9 @@ export function MediaProvider({ children, socket, roomId, username }) {
       }
     } catch (err) {
       console.error('[VibeSync] Screen share failed:', err);
+      addToast({ type: 'error', message: 'Failed to start screen share. Please check permissions.' });
     }
-  }, [socket, roomId, renegotiatePeer]);
+  }, [socket, roomId, renegotiatePeer, addToast]);
 
   const stopScreenShare = useCallback(() => {
     if (screenStreamRef.current) {
@@ -618,6 +638,8 @@ export function MediaProvider({ children, socket, roomId, username }) {
     selectedVideoDevice,
     localStream: localStreamRef.current,
     sharedFiles,
+    isCameraLoading,
+    isMicLoading,
     // Actions
     joinCall,
     leaveCall,

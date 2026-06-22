@@ -15,12 +15,15 @@ function Navbar() {
           {/* Logo */}
           <a href="/" className="flex items-center gap-2.5 group">
             {/* Logo icon */}
-            <div className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-neon-purple shadow-glow-sm group-hover:shadow-glow transition-shadow duration-300">
-              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" />
-              </svg>
+            <div className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-gradient-to-tr from-violet-600 via-blue-500 to-cyan-400 p-[1px] shadow-[0_0_12px_rgba(139,92,246,0.4)] group-hover:shadow-[0_0_20px_rgba(6,182,212,0.7)] group-hover:scale-105 transition-all duration-300">
+              <div className="w-full h-full bg-[#0a0118] rounded-[11px] flex items-center justify-center">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12h1.5l2-5 3 10 3-10 2 6 1.5-2H21" className="stroke-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.8)]" />
+                  <polygon points="10 8 16 12 10 16" className="fill-violet-400 stroke-none drop-shadow-[0_0_4px_rgba(167,139,250,0.6)]" />
+                </svg>
+              </div>
             </div>
-            <span className="text-xl font-bold gradient-text tracking-tight">
+            <span className="text-lg font-black bg-gradient-to-r from-violet-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent tracking-widest uppercase drop-shadow-[0_0_10px_rgba(6,182,212,0.2)]">
               VibeSync
             </span>
           </a>
