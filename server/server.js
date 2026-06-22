@@ -124,27 +124,33 @@ function searchYouTube(query) {
           if (!match) return resolve([]);
           
           const parsed = JSON.parse(match[1]);
-          const contents = parsed.contents?.twoColumnSearchResultRenderer?.primaryContents?.sectionListRenderer?.contents;
-          const itemSection = contents?.find(c => c.itemSectionRenderer)?.itemSectionRenderer;
-          const items = itemSection?.contents || [];
+          const contents = (parsed.contents?.twoColumnSearchResultsRenderer ||
+                            parsed.contents?.twoColumnSearchResultRenderer)?.primaryContents?.sectionListRenderer?.contents;
+          
+          let results = [];
+          if (contents && Array.isArray(contents)) {
+            for (const section of contents) {
+              const itemSection = section.itemSectionRenderer;
+              if (itemSection && Array.isArray(itemSection.contents)) {
+                for (const item of itemSection.contents) {
+                  const video = item.videoRenderer;
+                  if (video && video.videoId) {
+                    results.push({
+                      videoId: video.videoId,
+                      title: video.title?.runs?.[0]?.text || '',
+                      thumbnail: video.thumbnail?.thumbnails?.[0]?.url || '',
+                      channel: video.ownerText?.runs?.[0]?.text || '',
+                      duration: video.lengthText?.simpleText || '',
+                      views: video.viewCountText?.simpleText || '',
+                      published: video.publishedTimeText?.simpleText || '',
+                    });
+                  }
+                }
+              }
+            }
+          }
 
-          const results = items
-            .map((item) => {
-              const video = item.videoRenderer;
-              if (!video) return null;
-              return {
-                videoId: video.videoId,
-                title: video.title?.runs?.[0]?.text || '',
-                thumbnail: video.thumbnail?.thumbnails?.[0]?.url || '',
-                channel: video.ownerText?.runs?.[0]?.text || '',
-                duration: video.lengthText?.simpleText || '',
-                views: video.viewCountText?.simpleText || '',
-                published: video.publishedTimeText?.simpleText || '',
-              };
-            })
-            .filter(Boolean);
-
-          resolve(results.slice(0, 10)); // Limit to 10 results
+          resolve(results.slice(0, 20)); // Limit to 20 results for richer lists
         } catch (e) {
           reject(e);
         }

@@ -13,6 +13,7 @@ import VideoGrid from '../components/VideoGrid';
 import Whiteboard from '../components/Whiteboard';
 import GameManager from '../components/GameManager';
 import ErrorBoundary from '../components/ErrorBoundary';
+import RecommendedForYou from '../components/RecommendedForYou';
 
 function RoomContent({
   room,
@@ -281,7 +282,7 @@ function RoomContent({
                 )}
 
                 {/* YouTube Player (with inline search for admin) */}
-                <div className="flex-1 min-h-[280px]">
+                <div className="flex-1 min-h-[280px] shrink-0">
                   <YouTubePlayer
                     videoId={videoId}
                     socket={room ? socket : null}
@@ -290,6 +291,17 @@ function RoomContent({
                     onVideoEnd={handleVideoEnd}
                   />
                 </div>
+
+                {/* Recommended videos grid below player */}
+                {videoId && (
+                  <RecommendedForYou
+                    videoId={videoId}
+                    videoTitle={videoTitle}
+                    socket={socket}
+                    roomId={room?.roomId}
+                    queue={queue}
+                  />
+                )}
               </div>
 
               {/* Right: Shared Queue sidebar (desktop) */}
@@ -299,6 +311,7 @@ function RoomContent({
                   socket={socket}
                   roomId={room?.roomId}
                   videoId={videoId}
+                  videoTitle={videoTitle}
                   username={username}
                 />
               </div>

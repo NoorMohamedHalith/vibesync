@@ -8,6 +8,7 @@ const connectedUsers = new Map();
 const activeGames = new Map();
 // Collaborative queue: roomId -> Array<{id, videoId, videoTitle, thumbnail, channel, addedBy, addedAt}>
 const roomQueues = new Map();
+const lastQueueAdvances = new Map();
 
 // Rate limiting settings
 const socketMessageCounts = new Map();
@@ -437,6 +438,27 @@ function setupSocketHandlers(io, db) {
       }
     });
 
+    socket.on('video:play', async (data) => {
+      try {
+        const { roomId, currentTime } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        await db.collection('rooms').doc(roomId).update({
+          videoState: 'playing',
+          isPlaying: true,
+          currentTime: currentTime || 0,
+          videoStartedAt: Date.now(),
+          videoStartOffset: currentTime || 0
+        });
+
+        socket.to(roomId).emit('video:play', { currentTime: currentTime || 0, username: userMeta.username });
+        console.log(`[VibeSync] video:play active in room ${roomId} at ${currentTime} by ${userMeta.username}`);
+      } catch (error) {
+        console.error('[VibeSync] video:play error:', error.message);
+      }
+    });
+
     socket.on('pause-video', async (data) => {
       try {
         const { roomId, currentTime } = data || {};
@@ -455,6 +477,27 @@ function setupSocketHandlers(io, db) {
         console.log(`[VibeSync] Pause sync active in room ${roomId} at ${currentTime}`);
       } catch (error) {
         console.error('[VibeSync] pause-video error:', error.message);
+      }
+    });
+
+    socket.on('video:pause', async (data) => {
+      try {
+        const { roomId, currentTime } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        await db.collection('rooms').doc(roomId).update({
+          videoState: 'paused',
+          isPlaying: false,
+          currentTime: currentTime || 0,
+          videoStartedAt: 0,
+          videoStartOffset: currentTime || 0
+        });
+
+        socket.to(roomId).emit('video:pause', { currentTime: currentTime || 0, username: userMeta.username });
+        console.log(`[VibeSync] video:pause active in room ${roomId} at ${currentTime} by ${userMeta.username}`);
+      } catch (error) {
+        console.error('[VibeSync] video:pause error:', error.message);
       }
     });
 
@@ -481,6 +524,29 @@ function setupSocketHandlers(io, db) {
       }
     });
 
+    socket.on('video:seek', async (data) => {
+      try {
+        const { roomId, currentTime } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        const roomRef = db.collection('rooms').doc(roomId);
+        const roomSnap = await roomRef.get();
+        const roomData = roomSnap.data() || {};
+
+        await roomRef.update({
+          currentTime: currentTime || 0,
+          videoStartedAt: roomData.isPlaying ? Date.now() : 0,
+          videoStartOffset: currentTime || 0
+        });
+
+        socket.to(roomId).emit('video:seek', { currentTime: currentTime || 0, username: userMeta.username });
+        console.log(`[VibeSync] video:seek active in room ${roomId} to ${currentTime} by ${userMeta.username}`);
+      } catch (error) {
+        console.error('[VibeSync] video:seek error:', error.message);
+      }
+    });
+
     socket.on('sync-request', async (data) => {
       try {
         const { roomId } = data || {};
@@ -502,6 +568,153 @@ function setupSocketHandlers(io, db) {
         });
       } catch (error) {
         console.error('[VibeSync] sync-request error:', error.message);
+      }
+    });
+
+    socket.on('video:sync', async (data) => {
+      try {
+        const { roomId } = data || {};
+        const roomSnap = await db.collection('rooms').doc(roomId).get();
+        if (!roomSnap.exists) return;
+
+        const roomData = roomSnap.data();
+        let calculatedTime = roomData.currentTime || 0;
+        if (roomData.isPlaying && roomData.videoStartedAt) {
+          calculatedTime = (roomData.videoStartOffset || 0) + (Date.now() - roomData.videoStartedAt) / 1000;
+        }
+
+        socket.emit('video:sync', {
+          videoId: roomData.currentVideo?.videoId || roomData.videoId,
+          videoTitle: roomData.currentVideo?.videoTitle || roomData.videoTitle,
+          videoState: roomData.isPlaying ? 'playing' : 'paused',
+          currentTime: calculatedTime,
+          queue: roomQueues.get(roomId) || [],
+        });
+      } catch (error) {
+        console.error('[VibeSync] video:sync error:', error.message);
+      }
+    });
+
+    socket.on('video:ended', async (data) => {
+      try {
+        const { roomId, videoId } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        console.log(`[VibeSync] video:ended received from ${userMeta.username} in room ${roomId} for video ${videoId}`);
+
+        // Broadcast to all other participants
+        socket.to(roomId).emit('video:ended', { videoId, username: userMeta.username });
+
+        // Debounce autoplay to prevent duplicate advancements
+        const now = Date.now();
+        const lastAdvance = lastQueueAdvances.get(roomId) || 0;
+        if (now - lastAdvance < 3000) {
+          console.log(`[VibeSync] Autoplay advance ignored (already advanced recently in room ${roomId})`);
+          return;
+        }
+
+        const roomRef = db.collection('rooms').doc(roomId);
+        const roomSnap = await roomRef.get();
+        if (!roomSnap.exists) return;
+        const roomData = roomSnap.data();
+
+        const currentVid = roomData.currentVideo?.videoId || roomData.videoId;
+        if (currentVid && currentVid !== videoId) {
+          console.log(`[VibeSync] Autoplay advance ignored (current video ${currentVid} differs from ended video ${videoId})`);
+          return;
+        }
+
+        const queue = roomQueues.get(roomId) || [];
+        if (queue.length === 0) {
+          console.log(`[VibeSync] Queue empty in room ${roomId}. Stopping autoplay.`);
+          return;
+        }
+
+        lastQueueAdvances.set(roomId, now);
+
+        const finished = queue.shift();
+        const nextItem = queue[0];
+        roomQueues.set(roomId, queue);
+
+        if (nextItem) {
+          await roomRef.update({
+            videoId: nextItem.videoId,
+            videoTitle: nextItem.videoTitle,
+            currentVideo: { videoId: nextItem.videoId, videoTitle: nextItem.videoTitle },
+            videoState: 'playing',
+            isPlaying: true,
+            currentTime: 0,
+            videoStartedAt: Date.now(),
+            videoStartOffset: 0
+          });
+
+          io.to(roomId).emit('video:next', {
+            videoId: nextItem.videoId,
+            videoTitle: nextItem.videoTitle,
+          });
+          io.to(roomId).emit('video-changed', {
+            videoId: nextItem.videoId,
+            videoTitle: nextItem.videoTitle,
+          });
+        } else {
+          await roomRef.update({
+            videoId: null,
+            videoTitle: null,
+            currentVideo: { videoId: null, videoTitle: null },
+            videoState: 'paused',
+            isPlaying: false,
+            currentTime: 0,
+            videoStartedAt: 0,
+            videoStartOffset: 0
+          });
+
+          io.to(roomId).emit('video:next', {
+            videoId: null,
+            videoTitle: null,
+          });
+          io.to(roomId).emit('video-changed', {
+            videoId: null,
+            videoTitle: null,
+          });
+        }
+
+        io.to(roomId).emit('queue:updated', { queue });
+      } catch (error) {
+        console.error('[VibeSync] video:ended error:', error.message);
+      }
+    });
+
+    socket.on('recommendation:selected', (data) => {
+      try {
+        const { roomId, videoId, videoTitle } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        socket.to(roomId).emit('recommendation:selected', {
+          videoId,
+          videoTitle,
+          username: userMeta.username
+        });
+        console.log(`[VibeSync] recommendation:selected in room ${roomId} by ${userMeta.username}: ${videoTitle}`);
+      } catch (error) {
+        console.error('[VibeSync] recommendation:selected error:', error.message);
+      }
+    });
+
+    socket.on('recommendation:load', (data) => {
+      try {
+        const { roomId, query } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        socket.to(roomId).emit('recommendation:load', {
+          query,
+          username: userMeta.username
+        });
+        console.log(`[VibeSync] recommendation:load in room ${roomId} by ${userMeta.username} for query: ${query}`);
+      } catch (error) {
+        console.error('[VibeSync] recommendation:load error:', error.message);
       }
     });
 

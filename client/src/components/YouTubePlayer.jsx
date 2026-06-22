@@ -92,7 +92,10 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
             playerReady.current = true;
             setDuration(event.target.getDuration());
             event.target.setVolume(volume);
-            if (socket) socket.emit('sync-request', { roomId });
+            if (socket) {
+              socket.emit('video:sync', { roomId });
+              socket.emit('sync-request', { roomId });
+            }
           },
           onStateChange: (event) => {
             if (isSyncing.current) return;
@@ -100,13 +103,22 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
             if (state === window.YT.PlayerState.PLAYING) {
               setIsPlaying(true);
               const time = event.target.getCurrentTime();
-              if (socket) socket.emit('play-video', { roomId, currentTime: time });
+              if (socket) {
+                socket.emit('video:play', { roomId, currentTime: time });
+                socket.emit('play-video', { roomId, currentTime: time });
+              }
             } else if (state === window.YT.PlayerState.PAUSED) {
               setIsPlaying(false);
               const time = event.target.getCurrentTime();
-              if (socket) socket.emit('pause-video', { roomId, currentTime: time });
+              if (socket) {
+                socket.emit('video:pause', { roomId, currentTime: time });
+                socket.emit('pause-video', { roomId, currentTime: time });
+              }
             } else if (state === window.YT.PlayerState.ENDED) {
               setIsPlaying(false);
+              if (socket) {
+                socket.emit('video:ended', { roomId, videoId });
+              }
               if (onVideoEnd) onVideoEnd();
             }
           },
@@ -201,12 +213,24 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
     socket.on('sync-state', handleSyncState);
     socket.on('video-changed', handleVideoChanged);
 
+    socket.on('video:play', handleVideoPlayed);
+    socket.on('video:pause', handleVideoPaused);
+    socket.on('video:seek', handleVideoSeeked);
+    socket.on('video:sync', handleSyncState);
+    socket.on('video:next', handleVideoChanged);
+
     return () => {
       socket.off('video-played', handleVideoPlayed);
       socket.off('video-paused', handleVideoPaused);
       socket.off('video-seeked', handleVideoSeeked);
       socket.off('sync-state', handleSyncState);
       socket.off('video-changed', handleVideoChanged);
+
+      socket.off('video:play', handleVideoPlayed);
+      socket.off('video:pause', handleVideoPaused);
+      socket.off('video:seek', handleVideoSeeked);
+      socket.off('video:sync', handleSyncState);
+      socket.off('video:next', handleVideoChanged);
     };
   }, [socket, roomId]);
 
@@ -227,7 +251,10 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
     isSyncing.current = true;
     playerRef.current.seekTo(time, true);
     setCurrentTime(time);
-    if (socket) socket.emit('seek-video', { roomId, currentTime: time });
+    if (socket) {
+      socket.emit('video:seek', { roomId, currentTime: time });
+      socket.emit('seek-video', { roomId, currentTime: time });
+    }
     setTimeout(() => { isSyncing.current = false; }, 500);
   }, [duration, socket, roomId]);
 
@@ -237,7 +264,10 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
     isSyncing.current = true;
     playerRef.current.seekTo(time, true);
     setCurrentTime(time);
-    if (socket) socket.emit('seek-video', { roomId, currentTime: time });
+    if (socket) {
+      socket.emit('video:seek', { roomId, currentTime: time });
+      socket.emit('seek-video', { roomId, currentTime: time });
+    }
     setTimeout(() => { isSyncing.current = false; }, 500);
   }, [duration, socket, roomId]);
 
@@ -247,7 +277,10 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
     isSyncing.current = true;
     playerRef.current.seekTo(time, true);
     setCurrentTime(time);
-    if (socket) socket.emit('seek-video', { roomId, currentTime: time });
+    if (socket) {
+      socket.emit('video:seek', { roomId, currentTime: time });
+      socket.emit('seek-video', { roomId, currentTime: time });
+    }
     setTimeout(() => { isSyncing.current = false; }, 500);
   }, [socket, roomId]);
 
@@ -258,8 +291,12 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
     playerRef.current.playVideo();
     setCurrentTime(0);
     setIsPlaying(true);
-    if (socket) socket.emit('seek-video', { roomId, currentTime: 0 });
-    if (socket) socket.emit('play-video', { roomId, currentTime: 0 });
+    if (socket) {
+      socket.emit('video:seek', { roomId, currentTime: 0 });
+      socket.emit('seek-video', { roomId, currentTime: 0 });
+      socket.emit('video:play', { roomId, currentTime: 0 });
+      socket.emit('play-video', { roomId, currentTime: 0 });
+    }
     setTimeout(() => { isSyncing.current = false; }, 500);
   }, [socket, roomId]);
 

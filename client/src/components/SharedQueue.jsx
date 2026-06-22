@@ -25,12 +25,45 @@ function extractVideoId(url) {
   return null;
 }
 
-export default function SharedQueue({ queue = [], socket, roomId, videoId, username }) {
+function getSmartQueries(title, fallbackVideoId) {
+  if (!title) return [fallbackVideoId || 'trending music'];
+  
+  let cleanTitle = title
+    .replace(/\(.*?\)/g, '')
+    .replace(/\[.*?\]/g, '')
+    .replace(/(official video|music video|lyric video|official audio|full song|full video|lyrical video|lyrical|video song|audio song|official lyric video|official)/gi, '')
+    .trim();
+
+  const tokens = cleanTitle.split(/[|\-•,]/).map(t => t.trim()).filter(Boolean);
+  const queries = [];
+
+  if (tokens.length >= 2) {
+    const songName = tokens[0];
+    const artists = tokens.slice(1);
+    
+    queries.push(`${songName} ${artists[0]}`);
+    queries.push(`${songName} similar songs`);
+    for (const artist of artists.slice(0, 3)) {
+      queries.push(`${artist} hit songs`);
+      queries.push(`${songName} similar ${artist}`);
+    }
+  } else {
+    queries.push(`${cleanTitle} similar songs`);
+    queries.push(`${cleanTitle} playlist`);
+    queries.push(`${cleanTitle} official audio`);
+  }
+
+  queries.push('trending music');
+  return queries;
+}
+
+export default function SharedQueue({ queue = [], socket, roomId, videoId, videoTitle, username }) {
   const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'recommendations'
   const [recommendations, setRecommendations] = useState([]);
   const [recsLoading, setRecsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [currentQuery, setCurrentQuery] = useState('');
+  const [smartQueriesList, setSmartQueriesList] = useState([]);
   const [page, setPage] = useState(0);
   const [addingId, setAddingId] = useState(null);
   const [addedIds, setAddedIds] = useState(new Set());
@@ -49,6 +82,9 @@ export default function SharedQueue({ queue = [], socket, roomId, videoId, usern
     abortRef.current = ctrl;
     setRecsLoading(true);
     try {
+      if (socket) {
+        socket.emit('recommendation:load', { roomId, query });
+      }
       const res = await fetch(
         `${SERVER_URL}/api/youtube/search?q=${encodeURIComponent(query)}`,
         { signal: ctrl.signal }
@@ -71,30 +107,34 @@ export default function SharedQueue({ queue = [], socket, roomId, videoId, usern
     } finally {
       setRecsLoading(false);
     }
-  }, []);
+  }, [socket, roomId]);
 
   // Fetch recommendations when videoId or tab changes
   useEffect(() => {
     if (activeTab !== 'recommendations') return;
-    const seed = SEED_QUERIES[Math.floor(Math.random() * SEED_QUERIES.length)];
-    const q = videoId ? `related ${videoId}` : seed;
-    setCurrentQuery(q);
+    const list = getSmartQueries(videoTitle, videoId);
+    setSmartQueriesList(list);
     setPage(0);
-    fetchRecs(q, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoId, activeTab]);
+    setRecommendations([]);
+    if (list.length > 0) {
+      setCurrentQuery(list[0]);
+      fetchRecs(list[0], true);
+    }
+  }, [videoId, videoTitle, activeTab, fetchRecs]);
 
   // Infinite scroll
   useEffect(() => {
-    if (activeTab !== 'recommendations' || !hasMore || recsLoading) return;
+    if (activeTab !== 'recommendations' || !hasMore || recsLoading || smartQueriesList.length === 0) return;
     if (observerRef.current) observerRef.current.disconnect();
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !recsLoading) {
-          const altQuery = currentQuery + ' ' + SEED_QUERIES[page % SEED_QUERIES.length];
-          setPage((p) => p + 1);
-          fetchRecs(altQuery, false);
+          const nextPageIndex = page + 1;
+          const nextQuery = smartQueriesList[nextPageIndex % smartQueriesList.length];
+          setPage(nextPageIndex);
+          setCurrentQuery(nextQuery);
+          fetchRecs(nextQuery, false);
         }
       },
       { threshold: 0.1 }
@@ -102,7 +142,7 @@ export default function SharedQueue({ queue = [], socket, roomId, videoId, usern
 
     if (bottomRef.current) observerRef.current.observe(bottomRef.current);
     return () => { if (observerRef.current) observerRef.current.disconnect(); };
-  }, [hasMore, recsLoading, currentQuery, page, activeTab, fetchRecs]);
+  }, [hasMore, recsLoading, smartQueriesList, page, activeTab, fetchRecs]);
 
   const addToQueue = useCallback((video) => {
     if (!socket) return;
@@ -116,6 +156,13 @@ export default function SharedQueue({ queue = [], socket, roomId, videoId, usern
       thumbnail: video.thumbnail || `https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`,
       channel: video.channel || '',
     });
+
+    socket.emit('recommendation:selected', {
+      roomId,
+      videoId: video.videoId,
+      videoTitle: video.title,
+    });
+
     setTimeout(() => setAddingId(null), 1000);
   }, [socket, roomId, addedIds]);
 
