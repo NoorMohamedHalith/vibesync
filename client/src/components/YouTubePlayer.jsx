@@ -374,47 +374,46 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
 
   return (
     <div className="flex flex-col gap-3 w-full">
-      {/* ── Inline Search Bar (always visible for admin) ── */}
-      {isAdmin && (
-        <div className="relative">
-          <form
-            onSubmit={(e) => { e.preventDefault(); doSearch(searchQuery); setShowSearch(searchResults.length > 0 || searchLoading); }}
-            className="flex gap-2"
+      {/* ── Inline Search Bar (visible to ALL participants) ── */}
+      <div className="relative">
+        <form
+          onSubmit={(e) => { e.preventDefault(); doSearch(searchQuery); setShowSearch(searchResults.length > 0 || searchLoading); }}
+          className="flex gap-2"
+        >
+          <div className="flex-1 relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchInput}
+              onFocus={() => searchResults.length > 0 && setShowSearch(true)}
+              onBlur={() => setTimeout(() => setShowSearch(false), 200)}
+              placeholder="Search videos or Paste YouTube Link"
+              className="w-full pl-9 pr-4 py-2.5 bg-white/5 border border-white/10 focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 rounded-2xl text-sm text-gray-200 placeholder-gray-500 outline-none transition-all"
+              id="youtube-search-input"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={searchLoading || !searchQuery.trim()}
+            className="px-4 py-2.5 bg-gradient-to-r from-red-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white rounded-2xl text-sm font-semibold transition-all disabled:opacity-40 flex items-center gap-1.5 shrink-0 shadow-[0_0_12px_rgba(220,38,38,0.3)]"
           >
-            <div className="flex-1 relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            {searchLoading ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={handleSearchInput}
-                onFocus={() => searchResults.length > 0 && setShowSearch(true)}
-                onBlur={() => setTimeout(() => setShowSearch(false), 200)}
-                placeholder="Search videos or Paste YouTube Link"
-                className="w-full pl-9 pr-4 py-2.5 bg-white/5 border border-white/10 focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 rounded-2xl text-sm text-gray-200 placeholder-gray-500 outline-none transition-all"
-                id="youtube-search-input"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={searchLoading || !searchQuery.trim()}
-              className="px-4 py-2.5 bg-gradient-to-r from-red-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white rounded-2xl text-sm font-semibold transition-all disabled:opacity-40 flex items-center gap-1.5 shrink-0 shadow-[0_0_12px_rgba(220,38,38,0.3)]"
-            >
-              {searchLoading ? (
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                  <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
-                </svg>
-              )}
-              <span className="hidden sm:inline">Search</span>
-            </button>
-          </form>
+            ) : (
+              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
+              </svg>
+            )}
+            <span className="hidden sm:inline">Search</span>
+          </button>
+        </form>
 
           {/* Search Dropdown */}
           {showSearch && (searchResults.length > 0 || searchError) && (
@@ -447,7 +446,6 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
             </div>
           )}
         </div>
-      )}
 
       {/* ── Video Player ── */}
       {!videoId ? (
@@ -461,7 +459,7 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
             </div>
             <p className="text-gray-400 text-lg font-medium">No video loaded</p>
             <p className="text-gray-500 text-sm mt-1">
-              {isAdmin ? 'Search above or paste a YouTube link to start watching' : 'Waiting for admin to load a video...'}
+              Search or paste a YouTube link above, or browse Discover in the queue panel
             </p>
           </div>
         </div>

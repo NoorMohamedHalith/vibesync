@@ -6,6 +6,8 @@ const { v4: uuidv4 } = require('uuid');
  */
 const connectedUsers = new Map();
 const activeGames = new Map();
+// Collaborative queue: roomId -> Array<{id, videoId, videoTitle, thumbnail, channel, addedBy, addedAt}>
+const roomQueues = new Map();
 
 // Rate limiting settings
 const socketMessageCounts = new Map();
@@ -252,6 +254,8 @@ function setupSocketHandlers(io, db) {
         console.log('[VibeSync] Room saved.');
 
         connectedUsers.set(socket.id, { roomId, username, isAdmin: true });
+        // Initialize empty queue for this room
+        roomQueues.set(roomId, []);
         socket.join(roomId);
 
         const response = { roomId, roomCode: roomId, roomName, adminId: socket.id };
@@ -335,6 +339,8 @@ function setupSocketHandlers(io, db) {
         safeRoom.participants = freshData.users || [];
         safeRoom.messages = freshData.chatMessages || [];
         safeRoom.files = freshData.files || [];
+        // Include queue in join response
+        safeRoom.queue = roomQueues.get(roomId) || [];
 
         socket.emit('room-joined', safeRoom);
 
@@ -349,6 +355,7 @@ function setupSocketHandlers(io, db) {
           videoTitle: freshData.currentVideo?.videoTitle || freshData.videoTitle,
           videoState: freshData.isPlaying ? 'playing' : 'paused',
           currentTime: calculatedTime,
+          queue: roomQueues.get(roomId) || [],
         });
 
         socket.to(roomId).emit('user-joined', {
@@ -379,12 +386,12 @@ function setupSocketHandlers(io, db) {
         const { roomId, videoUrl, videoTitle } = data || {};
         const userMeta = connectedUsers.get(socket.id);
 
-        if (!userMeta || !userMeta.isAdmin) {
-          return socket.emit('error-occurred', { error: 'Only the admin can change the video' });
+        if (!userMeta) {
+          return socket.emit('error-occurred', { error: 'You are not in a room' });
         }
 
         const videoId = extractVideoId(videoUrl);
-        console.log(`[VibeSync] Changing video to ${videoId} in room ${roomId}...`);
+        console.log(`[VibeSync] Changing video to ${videoId} in room ${roomId} by ${userMeta.username}...`);
 
         await db.collection('rooms').doc(roomId).update({
           videoId,
@@ -413,7 +420,7 @@ function setupSocketHandlers(io, db) {
       try {
         const { roomId, currentTime } = data || {};
         const userMeta = connectedUsers.get(socket.id);
-        if (!userMeta || !userMeta.isAdmin) return;
+        if (!userMeta) return;
 
         await db.collection('rooms').doc(roomId).update({
           videoState: 'playing',
@@ -434,7 +441,7 @@ function setupSocketHandlers(io, db) {
       try {
         const { roomId, currentTime } = data || {};
         const userMeta = connectedUsers.get(socket.id);
-        if (!userMeta || !userMeta.isAdmin) return;
+        if (!userMeta) return;
 
         await db.collection('rooms').doc(roomId).update({
           videoState: 'paused',
@@ -455,7 +462,7 @@ function setupSocketHandlers(io, db) {
       try {
         const { roomId, currentTime } = data || {};
         const userMeta = connectedUsers.get(socket.id);
-        if (!userMeta || !userMeta.isAdmin) return;
+        if (!userMeta) return;
 
         const roomRef = db.collection('rooms').doc(roomId);
         const roomSnap = await roomRef.get();
@@ -491,9 +498,194 @@ function setupSocketHandlers(io, db) {
           videoTitle: roomData.currentVideo?.videoTitle || roomData.videoTitle,
           videoState: roomData.isPlaying ? 'playing' : 'paused',
           currentTime: calculatedTime,
+          queue: roomQueues.get(roomId) || [],
         });
       } catch (error) {
         console.error('[VibeSync] sync-request error:', error.message);
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // COLLABORATIVE QUEUE EVENTS
+    // -----------------------------------------------------------------------
+
+    // Add a video to the shared queue
+    socket.on('queue:add', async (data) => {
+      try {
+        const { roomId, videoId, videoTitle, thumbnail, channel } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        const queue = roomQueues.get(roomId) || [];
+        // Avoid duplicates
+        if (queue.some((item) => item.videoId === videoId)) {
+          return socket.emit('error-occurred', { error: 'Video already in queue' });
+        }
+
+        const item = {
+          id: uuidv4(),
+          videoId,
+          videoTitle: videoTitle || 'Unknown Video',
+          thumbnail: thumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+          channel: channel || '',
+          addedBy: userMeta.username,
+          addedAt: Date.now(),
+        };
+
+        queue.push(item);
+        roomQueues.set(roomId, queue);
+
+        // If nothing is currently playing, auto-play this first item
+        const roomSnap = await db.collection('rooms').doc(roomId).get();
+        const roomData = roomSnap.exists ? roomSnap.data() : {};
+        const hasCurrentVideo = !!(roomData.videoId || roomData.currentVideo?.videoId);
+
+        if (!hasCurrentVideo) {
+          // Auto-play first queued item
+          await db.collection('rooms').doc(roomId).update({
+            videoId: item.videoId,
+            videoTitle: item.videoTitle,
+            currentVideo: { videoId: item.videoId, videoTitle: item.videoTitle },
+            videoState: 'paused',
+            isPlaying: false,
+            currentTime: 0,
+            videoStartedAt: 0,
+            videoStartOffset: 0
+          });
+          io.to(roomId).emit('video-changed', { videoId: item.videoId, videoTitle: item.videoTitle });
+        }
+
+        io.to(roomId).emit('queue:updated', { queue: roomQueues.get(roomId) || [] });
+        console.log(`[VibeSync] ${userMeta.username} added ${videoTitle} to queue in room ${roomId}`);
+      } catch (error) {
+        console.error('[VibeSync] queue:add error:', error.message);
+      }
+    });
+
+    // Remove a video from the queue
+    socket.on('queue:remove', (data) => {
+      try {
+        const { roomId, itemId } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        const queue = roomQueues.get(roomId) || [];
+        const idx = queue.findIndex((item) => item.id === itemId);
+        if (idx === -1) return;
+
+        queue.splice(idx, 1);
+        roomQueues.set(roomId, queue);
+        io.to(roomId).emit('queue:updated', { queue });
+        console.log(`[VibeSync] Queue item removed by ${userMeta.username} in room ${roomId}`);
+      } catch (error) {
+        console.error('[VibeSync] queue:remove error:', error.message);
+      }
+    });
+
+    // Move item up or down in queue
+    socket.on('queue:move', (data) => {
+      try {
+        const { roomId, itemId, direction } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        const queue = roomQueues.get(roomId) || [];
+        const idx = queue.findIndex((item) => item.id === itemId);
+        if (idx === -1) return;
+
+        if (direction === 'up' && idx > 0) {
+          [queue[idx - 1], queue[idx]] = [queue[idx], queue[idx - 1]];
+        } else if (direction === 'down' && idx < queue.length - 1) {
+          [queue[idx], queue[idx + 1]] = [queue[idx + 1], queue[idx]];
+        }
+
+        roomQueues.set(roomId, queue);
+        io.to(roomId).emit('queue:updated', { queue });
+      } catch (error) {
+        console.error('[VibeSync] queue:move error:', error.message);
+      }
+    });
+
+    // Skip to a specific item in queue (or play next)
+    socket.on('queue:skip', async (data) => {
+      try {
+        const { roomId, itemId } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        const queue = roomQueues.get(roomId) || [];
+        let nextItem;
+
+        if (itemId) {
+          // Skip to specific item
+          nextItem = queue.find((item) => item.id === itemId);
+          // Remove everything before this item
+          const idx = queue.findIndex((item) => item.id === itemId);
+          if (idx > 0) queue.splice(0, idx);
+        } else {
+          // Play next item
+          if (queue.length > 0) {
+            queue.shift(); // remove current (first) item
+            nextItem = queue[0];
+          }
+        }
+
+        roomQueues.set(roomId, queue);
+
+        if (nextItem) {
+          await db.collection('rooms').doc(roomId).update({
+            videoId: nextItem.videoId,
+            videoTitle: nextItem.videoTitle,
+            currentVideo: { videoId: nextItem.videoId, videoTitle: nextItem.videoTitle },
+            videoState: 'paused',
+            isPlaying: false,
+            currentTime: 0,
+            videoStartedAt: 0,
+            videoStartOffset: 0
+          });
+          io.to(roomId).emit('video-changed', { videoId: nextItem.videoId, videoTitle: nextItem.videoTitle });
+        }
+
+        io.to(roomId).emit('queue:updated', { queue });
+        console.log(`[VibeSync] Queue skip in room ${roomId} by ${userMeta.username}`);
+      } catch (error) {
+        console.error('[VibeSync] queue:skip error:', error.message);
+      }
+    });
+
+    // Client signals video ended — auto-advance queue
+    socket.on('queue:next', async (data) => {
+      try {
+        const { roomId } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        const queue = roomQueues.get(roomId) || [];
+        if (queue.length === 0) return;
+
+        // Remove the first item (just finished)
+        queue.shift();
+        const nextItem = queue[0];
+        roomQueues.set(roomId, queue);
+
+        if (nextItem) {
+          await db.collection('rooms').doc(roomId).update({
+            videoId: nextItem.videoId,
+            videoTitle: nextItem.videoTitle,
+            currentVideo: { videoId: nextItem.videoId, videoTitle: nextItem.videoTitle },
+            videoState: 'paused',
+            isPlaying: false,
+            currentTime: 0,
+            videoStartedAt: 0,
+            videoStartOffset: 0
+          });
+          io.to(roomId).emit('video-changed', { videoId: nextItem.videoId, videoTitle: nextItem.videoTitle });
+        }
+
+        io.to(roomId).emit('queue:updated', { queue });
+        console.log(`[VibeSync] Auto-advanced queue in room ${roomId}, next: ${nextItem?.videoTitle}`);
+      } catch (error) {
+        console.error('[VibeSync] queue:next error:', error.message);
       }
     });
 

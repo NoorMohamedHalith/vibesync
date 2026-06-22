@@ -4,7 +4,7 @@ import { useSocket } from '../context/SocketContext';
 import { useToast } from '../context/ToastContext';
 import { MediaProvider, useMedia } from '../context/MediaContext';
 import YouTubePlayer from '../components/YouTubePlayer';
-import YouTubeRecommendations from '../components/YouTubeRecommendations';
+import SharedQueue from '../components/SharedQueue';
 import Chat from '../components/Chat';
 import ParticipantsList from '../components/ParticipantsList';
 import ShareModal from '../components/ShareModal';
@@ -32,6 +32,7 @@ function RoomContent({
   handleLeave,
   handleKickUser,
   unreadMessages,
+  queue,
 }) {
   console.log('[VibeSync RoomContent] Rendering RoomContent component. Room name:', room?.roomName, 'Participants:', participants.length);
   const {
@@ -51,23 +52,12 @@ function RoomContent({
   const { socket } = useSocket();
   const { addToast } = useToast();
   const [activeMainView, setActiveMainView] = useState('youtube');
-  const [autoplay, setAutoplay] = useState(false);
-  const [recommendations, setRecommendations] = useState([]);
 
-  // Autoplay: when current video ends, emit change to first recommendation
+  // When video ends, signal server to advance queue
   const handleVideoEnd = useCallback(() => {
-    if (!autoplay || !isAdmin || !socket) return;
-    if (recommendations.length > 0) {
-      const next = recommendations.find((v) => v.videoId !== videoId);
-      if (next) {
-        socket.emit('video-change', {
-          roomId: room?.roomId,
-          videoUrl: `https://www.youtube.com/watch?v=${next.videoId}`,
-          videoTitle: next.title,
-        });
-      }
-    }
-  }, [autoplay, isAdmin, socket, recommendations, videoId, room]);
+    if (!socket || !room?.roomId) return;
+    socket.emit('queue:next', { roomId: room.roomId });
+  }, [socket, room]);
 
   // Auto-join WebRTC call upon mounting and room details set
   useEffect(() => {
@@ -302,17 +292,14 @@ function RoomContent({
                 </div>
               </div>
 
-              {/* Right: Recommendations sidebar (desktop) */}
-              <div className="lg:w-72 xl:w-80 shrink-0 bg-white/5 border border-white/10 rounded-3xl overflow-hidden flex flex-col" style={{ minHeight: '420px', maxHeight: '680px' }}>
-                <YouTubeRecommendations
-                  videoId={videoId}
-                  videoTitle={videoTitle}
+              {/* Right: Shared Queue sidebar (desktop) */}
+              <div className="lg:w-72 xl:w-80 shrink-0 bg-gray-900/80 border border-white/10 rounded-3xl overflow-hidden flex flex-col" style={{ minHeight: '420px', maxHeight: '700px' }}>
+                <SharedQueue
+                  queue={queue}
                   socket={socket}
                   roomId={room?.roomId}
-                  isAdmin={isAdmin}
-                  autoplay={autoplay}
-                  onAutoplayChange={setAutoplay}
-                  onRecommendationsLoaded={setRecommendations}
+                  videoId={videoId}
+                  username={username}
                 />
               </div>
             </div>
@@ -555,6 +542,7 @@ function RoomInner() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Closed by default on mobile
   const [joined, setJoined] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [queue, setQueue] = useState([]);
   const lastSocketId = useRef(null);
 
   // Clear unread count when chat tab is focused
@@ -614,6 +602,10 @@ function RoomInner() {
       if (data.messages) {
         setMessages(data.messages);
       }
+      // Hydrate queue from room-joined payload
+      if (data.queue) {
+        setQueue(data.queue);
+      }
     };
 
     const handleRoomCreated = (data) => {
@@ -628,10 +620,16 @@ function RoomInner() {
       setIsAdmin(true);
     };
 
-    const handleSyncState = ({ videoId: vid, videoTitle: title }) => {
+    const handleSyncState = ({ videoId: vid, videoTitle: title, queue: syncQueue }) => {
       console.log('[VibeSync RoomInner] Socket event: sync-state. videoId:', vid, 'title:', title);
       if (vid) setVideoId(vid);
       if (title) setVideoTitle(title);
+      if (syncQueue) setQueue(syncQueue);
+    };
+
+    const handleQueueUpdated = ({ queue: updatedQueue }) => {
+      console.log('[VibeSync RoomInner] Socket event: queue:updated. length:', updatedQueue?.length);
+      setQueue(updatedQueue || []);
     };
 
     const handleUserJoined = (user) => {
@@ -728,6 +726,7 @@ function RoomInner() {
     socket.on('reaction-updated', handleReactionUpdated);
     socket.on('user-kicked', handleUserKicked);
     socket.on('error-occurred', handleError);
+    socket.on('queue:updated', handleQueueUpdated);
 
     return () => {
       socket.off('room-joined', handleRoomJoined);
@@ -741,6 +740,7 @@ function RoomInner() {
       socket.off('reaction-updated', handleReactionUpdated);
       socket.off('user-kicked', handleUserKicked);
       socket.off('error-occurred', handleError);
+      socket.off('queue:updated', handleQueueUpdated);
     };
   }, [socket, navigate, addToast]);
 
@@ -811,6 +811,7 @@ function RoomInner() {
         handleLeave={handleLeave}
         handleKickUser={handleKickUser}
         unreadMessages={unreadMessages}
+        queue={queue}
       />
     </MediaProvider>
   );
