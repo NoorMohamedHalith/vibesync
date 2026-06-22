@@ -43,6 +43,7 @@ export default function Chat({ messages = [], socket, roomId, username }) {
     // Send message and reset typing state
     socket.emit('send-message', { roomId, text: text.trim() });
     socket.emit('typing', { roomId, isTyping: false });
+    socket.emit('activity:update', { roomId, activity: 'Watching...' });
     
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     
@@ -63,10 +64,12 @@ export default function Chat({ messages = [], socket, roomId, username }) {
 
     if (socket) {
       socket.emit('typing', { roomId, isTyping: true });
+      socket.emit('activity:update', { roomId, activity: 'Typing...' });
 
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
         socket.emit('typing', { roomId, isTyping: false });
+        socket.emit('activity:update', { roomId, activity: 'Watching...' });
       }, 2000);
     }
   };
@@ -238,6 +241,16 @@ export default function Chat({ messages = [], socket, roomId, username }) {
               value={text}
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
+              onFocus={() => {
+                if (socket) {
+                  socket.emit('activity:update', { roomId, activity: 'Typing...' });
+                }
+              }}
+              onBlur={() => {
+                if (socket) {
+                  socket.emit('activity:update', { roomId, activity: 'Watching...' });
+                }
+              }}
               placeholder="Type a message..."
               className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
             />

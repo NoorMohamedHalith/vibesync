@@ -57,8 +57,8 @@ function getSmartQueries(title, fallbackVideoId) {
   return queries;
 }
 
-export default function SharedQueue({ queue = [], socket, roomId, videoId, videoTitle, username }) {
-  const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'recommendations'
+export default function SharedQueue({ queue = [], history = [], socket, roomId, videoId, videoTitle, username }) {
+  const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'recommendations' | 'history'
   const [recommendations, setRecommendations] = useState([]);
   const [recsLoading, setRecsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -226,6 +226,24 @@ export default function SharedQueue({ queue = [], socket, roomId, videoId, video
             <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-gradient-to-r from-violet-400 to-cyan-400 rounded-full" />
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`flex-1 py-2.5 text-xs font-bold transition-all relative ${
+            activeTab === 'history'
+              ? 'text-violet-400'
+              : 'text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          <span className="flex items-center justify-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            History
+          </span>
+          {activeTab === 'history' && (
+            <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-gradient-to-r from-violet-400 to-cyan-400 rounded-full" />
+          )}
+        </button>
       </div>
 
       {/* Content */}
@@ -302,9 +320,29 @@ export default function SharedQueue({ queue = [], socket, roomId, videoId, video
                   {item.channel && (
                     <p className="text-[9px] text-gray-500 mt-0.5 truncate">{item.channel}</p>
                   )}
-                  <p className="text-[9px] text-violet-500/70 mt-0.5 truncate">
-                    Added by <span className="font-semibold text-violet-400">{item.addedBy}</span>
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-[9px] text-violet-500/70 truncate">
+                      Added by <span className="font-semibold text-violet-400">{item.addedBy}</span>
+                    </p>
+                    {idx > 0 && (
+                      <button
+                        onClick={() => {
+                          if (socket) socket.emit('queue:vote', { roomId, itemId: item.id });
+                        }}
+                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold border transition-all ${
+                          (item.votes || []).includes(username)
+                            ? 'bg-violet-500/20 border-violet-500/40 text-violet-400 shadow-[0_0_8px_rgba(139,92,246,0.2)]'
+                            : 'bg-white/5 border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/10'
+                        }`}
+                        title="Upvote song"
+                      >
+                        <svg className="w-2.5 h-2.5 fill-current" viewBox="0 0 24 24">
+                          <path d="M4 14h6V8h4v6h6l-8 8-8-8z" transform="rotate(180 12 12)" />
+                        </svg>
+                        <span>{(item.votes || []).length}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Actions */}
@@ -440,7 +478,7 @@ export default function SharedQueue({ queue = [], socket, roomId, videoId, video
 
             {/* Infinite scroll sentinel */}
             <div ref={bottomRef} className="h-4" />
-
+ 
             {recsLoading && recommendations.length > 0 && (
               <div className="flex justify-center py-3">
                 <svg className="w-5 h-5 text-violet-500 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -449,6 +487,94 @@ export default function SharedQueue({ queue = [], socket, roomId, videoId, video
                 </svg>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── HISTORY TAB ── */}
+        {activeTab === 'history' && (
+          <div className="p-2 space-y-2">
+            {(!history || history.length === 0) && (
+              <div className="flex flex-col items-center justify-center py-10 text-center px-4">
+                <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-3">
+                  <svg className="w-7 h-7 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-semibold text-gray-400">History is empty</p>
+                <p className="text-xs text-gray-600 mt-1">Songs played in this room will appear here</p>
+              </div>
+            )}
+ 
+            {history && history.map((item) => {
+              const inQueue = addedIds.has(item.videoId);
+              const isAdding = addingId === item.videoId;
+              return (
+                <div
+                  key={item.id || item.videoId}
+                  className="flex gap-2.5 rounded-xl bg-white/5 border border-white/5 hover:border-violet-500/20 p-2 group transition-all"
+                >
+                  {/* Thumbnail */}
+                  <div className="relative w-20 aspect-video rounded-lg overflow-hidden shrink-0 bg-black">
+                    <img
+                      src={item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`}
+                      alt={item.videoTitle}
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+ 
+                  {/* Info + Re-add button */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                    <p className="text-[11px] font-semibold text-gray-200 line-clamp-2 leading-snug group-hover:text-violet-300 transition-colors">
+                      {item.videoTitle}
+                    </p>
+                    {item.channel && (
+                      <p className="text-[10px] text-gray-500 truncate mt-0.5">{item.channel}</p>
+                    )}
+                    <button
+                      onClick={() => addToQueue({
+                        videoId: item.videoId,
+                        title: item.videoTitle,
+                        thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`,
+                        channel: item.channel || ''
+                      })}
+                      disabled={inQueue || isAdding}
+                      className={`mt-1.5 flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                        inQueue
+                          ? 'bg-green-500/10 border border-green-500/30 text-green-400 cursor-default'
+                          : isAdding
+                          ? 'bg-violet-500/20 border border-violet-500/30 text-violet-300 cursor-wait'
+                          : 'bg-white/5 border border-white/10 text-gray-300 hover:bg-violet-500/20 hover:border-violet-500/40 hover:text-violet-300'
+                      }`}
+                    >
+                      {inQueue ? (
+                        <>
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                          </svg>
+                          In Queue
+                        </>
+                      ) : isAdding ? (
+                        <>
+                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Adding...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Re-add to Queue
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

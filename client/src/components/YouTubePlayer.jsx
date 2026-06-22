@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import ReactionOverlay from './ReactionOverlay';
 
 const SERVER_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_SERVER_URL || (import.meta.env.DEV ? 'http://localhost:3001' : 'https://vibesync-wpoa.onrender.com');
 
@@ -22,6 +23,7 @@ function extractVideoId(url) {
 
 export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVideoEnd }) {
   const playerRef = useRef(null);
+  const reactionOverlayRef = useRef(null);
   const containerRef = useRef(null);
   const isSyncing = useRef(false);
   const playerReady = useRef(false);
@@ -207,6 +209,12 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
       }
     };
 
+    const handleReactionEmitted = ({ emoji }) => {
+      if (reactionOverlayRef.current) {
+        reactionOverlayRef.current.addReaction(emoji);
+      }
+    };
+
     socket.on('video-played', handleVideoPlayed);
     socket.on('video-paused', handleVideoPaused);
     socket.on('video-seeked', handleVideoSeeked);
@@ -218,6 +226,8 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
     socket.on('video:seek', handleVideoSeeked);
     socket.on('video:sync', handleSyncState);
     socket.on('video:next', handleVideoChanged);
+    
+    socket.on('reaction:emitted', handleReactionEmitted);
 
     return () => {
       socket.off('video-played', handleVideoPlayed);
@@ -231,6 +241,8 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
       socket.off('video:seek', handleVideoSeeked);
       socket.off('video:sync', handleSyncState);
       socket.off('video:next', handleVideoChanged);
+      
+      socket.off('reaction:emitted', handleReactionEmitted);
     };
   }, [socket, roomId]);
 
@@ -426,8 +438,18 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
               type="text"
               value={searchQuery}
               onChange={handleSearchInput}
-              onFocus={() => searchResults.length > 0 && setShowSearch(true)}
-              onBlur={() => setTimeout(() => setShowSearch(false), 200)}
+              onFocus={() => {
+                if (searchResults.length > 0) setShowSearch(true);
+                if (socket) {
+                  socket.emit('activity:update', { roomId, activity: 'Searching...' });
+                }
+              }}
+              onBlur={() => {
+                setTimeout(() => setShowSearch(false), 200);
+                if (socket) {
+                  socket.emit('activity:update', { roomId, activity: 'Watching...' });
+                }
+              }}
               placeholder="Search videos or Paste YouTube Link"
               className="w-full pl-9 pr-4 py-2.5 bg-white/5 border border-white/10 focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 rounded-2xl text-sm text-gray-200 placeholder-gray-500 outline-none transition-all"
               id="youtube-search-input"
@@ -515,6 +537,29 @@ export default function YouTubePlayer({ videoId, socket, roomId, isAdmin, onVide
             className="absolute inset-0 z-10 cursor-pointer"
             onClick={togglePlay}
           />
+
+          {/* Reaction Overlay */}
+          <ReactionOverlay ref={reactionOverlayRef} />
+
+          {/* Emoji Reaction Bar */}
+          <div className={`absolute bottom-20 right-4 z-20 flex gap-2 p-1.5 bg-black/60 backdrop-blur-md border border-white/10 rounded-full transition-all duration-300 ${
+            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+          }`}>
+            {['❤️', '😂', '🔥', '😭', '👍', '🎉'].map((emoji) => (
+              <button
+                key={emoji}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (socket) {
+                    socket.emit('reaction:emit', { roomId, emoji });
+                  }
+                }}
+                className="w-8 h-8 flex items-center justify-center text-lg hover:scale-125 hover:bg-white/10 rounded-full active:scale-95 transition-all"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
 
           {/* Play/Pause center indicator */}
           <div className={`absolute inset-0 z-10 flex items-center justify-center pointer-events-none transition-opacity duration-300 ${

@@ -9,6 +9,31 @@ const activeGames = new Map();
 // Collaborative queue: roomId -> Array<{id, videoId, videoTitle, thumbnail, channel, addedBy, addedAt}>
 const roomQueues = new Map();
 const lastQueueAdvances = new Map();
+const roomHistories = new Map();
+
+function addToRoomHistory(roomId, videoId, videoTitle, thumbnail, channel) {
+  if (!videoId) return null;
+  let history = roomHistories.get(roomId);
+  if (!history) {
+    history = [];
+    roomHistories.set(roomId, history);
+  }
+  if (history.length > 0 && history[0].videoId === videoId) return history;
+  
+  history.unshift({
+    id: uuidv4(),
+    videoId,
+    videoTitle: videoTitle || 'Unknown Video',
+    thumbnail: thumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+    channel: channel || '',
+    playedAt: Date.now(),
+  });
+  
+  if (history.length > 30) {
+    history.pop();
+  }
+  return history;
+}
 
 // Rate limiting settings
 const socketMessageCounts = new Map();
@@ -254,7 +279,7 @@ function setupSocketHandlers(io, db) {
         await db.collection('rooms').doc(roomId).set(roomDoc);
         console.log('[VibeSync] Room saved.');
 
-        connectedUsers.set(socket.id, { roomId, username, isAdmin: true });
+        connectedUsers.set(socket.id, { roomId, username, isAdmin: true, activity: 'Watching...' });
         // Initialize empty queue for this room
         roomQueues.set(roomId, []);
         socket.join(roomId);
@@ -328,7 +353,7 @@ function setupSocketHandlers(io, db) {
           });
         }
 
-        connectedUsers.set(socket.id, { roomId, username, isAdmin });
+        connectedUsers.set(socket.id, { roomId, username, isAdmin, activity: 'Watching...' });
         socket.join(roomId);
         console.log('[VibeSync] User added.');
 
@@ -337,11 +362,21 @@ function setupSocketHandlers(io, db) {
         const freshData = freshSnap.data();
 
         const { password: _pw, ...safeRoom } = freshData;
-        safeRoom.participants = freshData.users || [];
+        
+        // Hydrate activity status for each participant
+        const pList = (freshData.users || []).map((u) => {
+          const meta = connectedUsers.get(u.socketId);
+          return {
+            ...u,
+            activity: meta ? meta.activity : 'Watching...'
+          };
+        });
+        
+        safeRoom.participants = pList;
         safeRoom.messages = freshData.chatMessages || [];
         safeRoom.files = freshData.files || [];
-        // Include queue in join response
         safeRoom.queue = roomQueues.get(roomId) || [];
+        safeRoom.history = roomHistories.get(roomId) || [];
 
         socket.emit('room-joined', safeRoom);
 
@@ -357,6 +392,7 @@ function setupSocketHandlers(io, db) {
           videoState: freshData.isPlaying ? 'playing' : 'paused',
           currentTime: calculatedTime,
           queue: roomQueues.get(roomId) || [],
+          history: roomHistories.get(roomId) || [],
         });
 
         socket.to(roomId).emit('user-joined', {
@@ -394,7 +430,22 @@ function setupSocketHandlers(io, db) {
         const videoId = extractVideoId(videoUrl);
         console.log(`[VibeSync] Changing video to ${videoId} in room ${roomId} by ${userMeta.username}...`);
 
-        await db.collection('rooms').doc(roomId).update({
+        // Archive previous video to history before updating to new one
+        const roomRef = db.collection('rooms').doc(roomId);
+        const roomSnap = await roomRef.get();
+        if (roomSnap.exists) {
+          const roomData = roomSnap.data();
+          const oldVideoId = roomData.videoId || roomData.currentVideo?.videoId;
+          if (oldVideoId) {
+            const oldTitle = roomData.videoTitle || roomData.currentVideo?.videoTitle;
+            const hist = addToRoomHistory(roomId, oldVideoId, oldTitle, null, null);
+            if (hist) {
+              io.to(roomId).emit('history:updated', { history: hist });
+            }
+          }
+        }
+
+        await roomRef.update({
           videoId,
           videoTitle: videoTitle || null,
           currentVideo: { videoId, videoTitle: videoTitle || null },
@@ -634,6 +685,12 @@ function setupSocketHandlers(io, db) {
         lastQueueAdvances.set(roomId, now);
 
         const finished = queue.shift();
+        if (finished) {
+          const hist = addToRoomHistory(roomId, finished.videoId, finished.videoTitle, finished.thumbnail, finished.channel);
+          if (hist) {
+            io.to(roomId).emit('history:updated', { history: hist });
+          }
+        }
         const nextItem = queue[0];
         roomQueues.set(roomId, queue);
 
@@ -718,6 +775,83 @@ function setupSocketHandlers(io, db) {
       }
     });
 
+    socket.on('queue:vote', (data) => {
+      try {
+        const { roomId, itemId } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        const queue = roomQueues.get(roomId) || [];
+        const item = queue.find((i) => i.id === itemId);
+        if (!item) return;
+
+        if (!item.votes) item.votes = [];
+        
+        const idx = item.votes.indexOf(userMeta.username);
+        if (idx === -1) {
+          item.votes.push(userMeta.username);
+        } else {
+          item.votes.splice(idx, 1);
+        }
+
+        // Re-sort queue (excluding currently playing video at index 0)
+        if (queue.length > 2) {
+          const current = queue[0];
+          const rest = queue.slice(1);
+          rest.sort((a, b) => {
+            const vA = (a.votes || []).length;
+            const vB = (b.votes || []).length;
+            if (vA !== vB) return vB - vA;
+            return a.addedAt - b.addedAt;
+          });
+          roomQueues.set(roomId, [current, ...rest]);
+        } else {
+          roomQueues.set(roomId, queue);
+        }
+
+        io.to(roomId).emit('queue:updated', { queue: roomQueues.get(roomId) });
+        console.log(`[VibeSync] Vote toggled for item ${item.videoTitle} by ${userMeta.username}`);
+      } catch (error) {
+        console.error('[VibeSync] queue:vote error:', error.message);
+      }
+    });
+
+    socket.on('activity:update', (data) => {
+      try {
+        const { roomId, activity } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        userMeta.activity = activity || 'Watching...';
+        connectedUsers.set(socket.id, userMeta);
+
+        io.to(roomId).emit('activity:updated', {
+          socketId: socket.id,
+          username: userMeta.username,
+          activity: userMeta.activity,
+        });
+      } catch (error) {
+        console.error('[VibeSync] activity:update error:', error.message);
+      }
+    });
+
+    socket.on('reaction:emit', (data) => {
+      try {
+        const { roomId, emoji } = data || {};
+        const userMeta = connectedUsers.get(socket.id);
+        if (!userMeta) return;
+
+        io.to(roomId).emit('reaction:emitted', {
+          id: uuidv4(),
+          emoji,
+          username: userMeta.username,
+          socketId: socket.id,
+        });
+      } catch (error) {
+        console.error('[VibeSync] reaction:emit error:', error.message);
+      }
+    });
+
     // -----------------------------------------------------------------------
     // COLLABORATIVE QUEUE EVENTS
     // -----------------------------------------------------------------------
@@ -743,6 +877,7 @@ function setupSocketHandlers(io, db) {
           channel: channel || '',
           addedBy: userMeta.username,
           addedAt: Date.now(),
+          votes: [userMeta.username], // Initially voted by adder
         };
 
         queue.push(item);
@@ -832,13 +967,22 @@ function setupSocketHandlers(io, db) {
         if (itemId) {
           // Skip to specific item
           nextItem = queue.find((item) => item.id === itemId);
-          // Remove everything before this item
           const idx = queue.findIndex((item) => item.id === itemId);
-          if (idx > 0) queue.splice(0, idx);
+          if (idx > 0) {
+            // Add skipped items to history
+            const skipped = queue.slice(0, idx);
+            for (const s of skipped) {
+              addToRoomHistory(roomId, s.videoId, s.videoTitle, s.thumbnail, s.channel);
+            }
+            queue.splice(0, idx);
+          }
         } else {
           // Play next item
           if (queue.length > 0) {
-            queue.shift(); // remove current (first) item
+            const finished = queue.shift(); // remove current (first) item
+            if (finished) {
+              addToRoomHistory(roomId, finished.videoId, finished.videoTitle, finished.thumbnail, finished.channel);
+            }
             nextItem = queue[0];
           }
         }
@@ -857,9 +1001,24 @@ function setupSocketHandlers(io, db) {
             videoStartOffset: 0
           });
           io.to(roomId).emit('video-changed', { videoId: nextItem.videoId, videoTitle: nextItem.videoTitle });
+          io.to(roomId).emit('video:next', { videoId: nextItem.videoId, videoTitle: nextItem.videoTitle });
+        } else {
+          await db.collection('rooms').doc(roomId).update({
+            videoId: null,
+            videoTitle: null,
+            currentVideo: { videoId: null, videoTitle: null },
+            videoState: 'paused',
+            isPlaying: false,
+            currentTime: 0,
+            videoStartedAt: 0,
+            videoStartOffset: 0
+          });
+          io.to(roomId).emit('video-changed', { videoId: null, videoTitle: null });
+          io.to(roomId).emit('video:next', { videoId: null, videoTitle: null });
         }
 
         io.to(roomId).emit('queue:updated', { queue });
+        io.to(roomId).emit('history:updated', { history: roomHistories.get(roomId) || [] });
         console.log(`[VibeSync] Queue skip in room ${roomId} by ${userMeta.username}`);
       } catch (error) {
         console.error('[VibeSync] queue:skip error:', error.message);
@@ -877,7 +1036,10 @@ function setupSocketHandlers(io, db) {
         if (queue.length === 0) return;
 
         // Remove the first item (just finished)
-        queue.shift();
+        const finished = queue.shift();
+        if (finished) {
+          addToRoomHistory(roomId, finished.videoId, finished.videoTitle, finished.thumbnail, finished.channel);
+        }
         const nextItem = queue[0];
         roomQueues.set(roomId, queue);
 
@@ -893,9 +1055,24 @@ function setupSocketHandlers(io, db) {
             videoStartOffset: 0
           });
           io.to(roomId).emit('video-changed', { videoId: nextItem.videoId, videoTitle: nextItem.videoTitle });
+          io.to(roomId).emit('video:next', { videoId: nextItem.videoId, videoTitle: nextItem.videoTitle });
+        } else {
+          await db.collection('rooms').doc(roomId).update({
+            videoId: null,
+            videoTitle: null,
+            currentVideo: { videoId: null, videoTitle: null },
+            videoState: 'paused',
+            isPlaying: false,
+            currentTime: 0,
+            videoStartedAt: 0,
+            videoStartOffset: 0
+          });
+          io.to(roomId).emit('video-changed', { videoId: null, videoTitle: null });
+          io.to(roomId).emit('video:next', { videoId: null, videoTitle: null });
         }
 
         io.to(roomId).emit('queue:updated', { queue });
+        io.to(roomId).emit('history:updated', { history: roomHistories.get(roomId) || [] });
         console.log(`[VibeSync] Auto-advanced queue in room ${roomId}, next: ${nextItem?.videoTitle}`);
       } catch (error) {
         console.error('[VibeSync] queue:next error:', error.message);

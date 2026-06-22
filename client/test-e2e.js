@@ -135,6 +135,25 @@ clientA.on('queue:updated', (queueData) => {
   } else if (currentStep === 6) {
     // Verified next queue update
     console.log('[E2E Test] Post-ended queue size is now:', queue.length);
+  } else if (currentStep === 10) {
+    const item = queue.find((i) => i.videoId === 'song-3-id');
+    if (item) {
+      console.log('[E2E Test] Bob adds song-3-id -> queue updated. Alice voting for song-3-id...');
+      currentStep = 11;
+      clientA.emit('queue:vote', { roomId, itemId: item.id });
+    }
+  } else if (currentStep === 11) {
+    const item = queue.find((i) => i.videoId === 'song-3-id');
+    if (item && item.votes.includes('Alice') && item.votes.includes('Bob')) {
+      console.log('[E2E Test] Alice votes -> Alice receives queue:updated with Alice and Bob votes: SUCCESS');
+      currentStep = 12;
+      
+      // Step 12: Skip/Advance current song (song-2-id) to push it to Room History
+      console.log('[E2E Test] Step 12: Waiting 3.5 seconds for server lockout, then Alice ends video song-2-id...');
+      setTimeout(() => {
+        clientA.emit('video:ended', { roomId, videoId: 'song-2-id' });
+      }, 3500);
+    }
   }
 });
 
@@ -173,17 +192,57 @@ clientB.on('recommendation:selected', (recSelectData) => {
     console.log('[E2E Test] Alice selects rec -> Bob receives recommendation:selected: SUCCESS (title =', recSelectData.videoTitle, ')');
     currentStep = 8;
     
-    console.log('[E2E Test] ALL COLLABORATIVE PLAYBACK AND QUEUE SYNC TESTS PASSED!');
-    clientA.disconnect();
-    clientB.disconnect();
-    process.exit(0);
+    // Step 8: Test Activity Status update
+    console.log('[E2E Test] Step 8: Bob updates activity status to "Dancing..."');
+    clientB.emit('activity:update', { roomId, activity: 'Dancing...' });
+  }
+});
+
+clientA.on('activity:updated', ({ socketId, activity }) => {
+  if (currentStep === 8 && activity === 'Dancing...') {
+    console.log('[E2E Test] Bob updates activity -> Alice receives activity:updated: SUCCESS');
+    currentStep = 9;
+    
+    // Step 9: Test Live Reaction broadcasting
+    console.log('[E2E Test] Step 9: Alice emits reaction "🎉"...');
+    clientA.emit('reaction:emit', { roomId, emoji: '🎉' });
+  }
+});
+
+clientB.on('reaction:emitted', ({ emoji, username: reactionUser }) => {
+  if (currentStep === 9 && emoji === '🎉') {
+    console.log('[E2E Test] Alice emits reaction -> Bob receives reaction:emitted: SUCCESS');
+    currentStep = 10;
+    
+    // Step 10: Queue voting & sorting. Bob adds song-3-id to queue.
+    console.log('[E2E Test] Step 10: Bob adding song-3-id to queue...');
+    clientB.emit('queue:add', {
+      roomId,
+      videoId: 'song-3-id',
+      videoTitle: 'Song Three Title',
+      thumbnail: 'thumb-3',
+      channel: 'Channel Three'
+    });
+  }
+});
+
+clientA.on('history:updated', ({ history: roomHistory }) => {
+  if (currentStep === 12) {
+    const histItem = roomHistory.find((h) => h.videoId === 'song-2-id');
+    if (histItem) {
+      console.log('[E2E Test] Video ended -> Alice receives history:updated with song-2-id: SUCCESS');
+      console.log('[E2E Test] ALL COLLABORATIVE STARTUP PHASE 1 E2E TESTS PASSED!');
+      clientA.disconnect();
+      clientB.disconnect();
+      process.exit(0);
+    }
   }
 });
 
 // Set a timeout to prevent hanging if anything fails
 setTimeout(() => {
-  console.error(`[E2E Test] Test timed out after 10 seconds! Failed at step ${currentStep}`);
+  console.error(`[E2E Test] Test timed out after 15 seconds! Failed at step ${currentStep}`);
   clientA.disconnect();
   clientB.disconnect();
   process.exit(1);
-}, 10000);
+}, 15000);

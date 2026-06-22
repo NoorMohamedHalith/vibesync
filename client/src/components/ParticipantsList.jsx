@@ -19,8 +19,9 @@ function ParticipantsList({ participants, isAdmin, onKick, currentUser }) {
 
         {participants.map((user, idx) => {
           const name = typeof user === 'string' ? user : user.username;
-          const id = typeof user === 'string' ? user : user.id;
+          const id = typeof user === 'string' ? user : (user.socketId || user.id);
           const userIsAdmin = typeof user === 'object' && user.isAdmin;
+          const activity = typeof user === 'object' ? user.activity : null;
           const isYou = name === currentUser;
 
           return (
@@ -49,18 +50,25 @@ function ParticipantsList({ participants, isAdmin, onKick, currentUser }) {
                     </span>
                   )}
                 </div>
-                {userIsAdmin && (
-                  <div className="flex items-center gap-1 mt-0.5">
-                    {/* Crown icon */}
-                    <svg className="w-3 h-3 text-amber-400" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M2.5 18.5l2-9 5 4 3-7 3 7 5-4 2 9h-20z" />
-                      <rect x="2.5" y="18.5" width="19" height="2.5" rx="1" />
-                    </svg>
-                    <span className="text-[10px] font-semibold text-amber-500 dark:text-amber-400">
-                      Admin
-                    </span>
-                  </div>
-                )}
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  {userIsAdmin && (
+                    <div className="flex items-center gap-1">
+                      {/* Crown icon */}
+                      <svg className="w-3 h-3 text-amber-400" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2.5 18.5l2-9 5 4 3-7 3 7 5-4 2 9h-20z" />
+                        <rect x="2.5" y="18.5" width="19" height="2.5" rx="1" />
+                      </svg>
+                      <span className="text-[10px] font-semibold text-amber-500 dark:text-amber-400">
+                        Admin
+                      </span>
+                    </div>
+                  )}
+                  {activity && (
+                    <div className="text-[10px] font-medium text-violet-400 dark:text-violet-300 drop-shadow-[0_0_4px_rgba(139,92,246,0.4)] truncate">
+                      {activity}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Kick button (admin only, not self) */}

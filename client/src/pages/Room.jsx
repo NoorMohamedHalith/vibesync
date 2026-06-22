@@ -34,6 +34,7 @@ function RoomContent({
   handleKickUser,
   unreadMessages,
   queue,
+  history,
 }) {
   console.log('[VibeSync RoomContent] Rendering RoomContent component. Room name:', room?.roomName, 'Participants:', participants.length);
   const {
@@ -308,6 +309,7 @@ function RoomContent({
               <div className="lg:w-72 xl:w-80 shrink-0 bg-gray-900/80 border border-white/10 rounded-3xl overflow-hidden flex flex-col" style={{ minHeight: '420px', maxHeight: '700px' }}>
                 <SharedQueue
                   queue={queue}
+                  history={history}
                   socket={socket}
                   roomId={room?.roomId}
                   videoId={videoId}
@@ -556,6 +558,7 @@ function RoomInner() {
   const [joined, setJoined] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [queue, setQueue] = useState([]);
+  const [history, setHistory] = useState([]);
   const lastSocketId = useRef(null);
 
   // Clear unread count when chat tab is focused
@@ -619,6 +622,9 @@ function RoomInner() {
       if (data.queue) {
         setQueue(data.queue);
       }
+      if (data.history) {
+        setHistory(data.history);
+      }
     };
 
     const handleRoomCreated = (data) => {
@@ -633,11 +639,12 @@ function RoomInner() {
       setIsAdmin(true);
     };
 
-    const handleSyncState = ({ videoId: vid, videoTitle: title, queue: syncQueue }) => {
+    const handleSyncState = ({ videoId: vid, videoTitle: title, queue: syncQueue, history: syncHistory }) => {
       console.log('[VibeSync RoomInner] Socket event: sync-state. videoId:', vid, 'title:', title);
       if (vid) setVideoId(vid);
       if (title) setVideoTitle(title);
       if (syncQueue) setQueue(syncQueue);
+      if (syncHistory) setHistory(syncHistory);
     };
 
     const handleQueueUpdated = ({ queue: updatedQueue }) => {
@@ -728,6 +735,18 @@ function RoomInner() {
       addToast({ type: 'error', message: errMsg || 'Something went wrong.' });
     };
 
+    const handleHistoryUpdated = ({ history: updatedHistory }) => {
+      console.log('[VibeSync RoomInner] Socket event: history:updated. length:', updatedHistory?.length);
+      setHistory(updatedHistory || []);
+    };
+
+    const handleActivityUpdated = ({ socketId, activity }) => {
+      console.log('[VibeSync RoomInner] Socket event: activity:updated. socketId:', socketId, 'activity:', activity);
+      setParticipants((prev) =>
+        prev.map((p) => (p.socketId === socketId ? { ...p, activity } : p))
+      );
+    };
+
     socket.on('room-joined', handleRoomJoined);
     socket.on('room-created', handleRoomCreated);
     socket.on('sync-state', handleSyncState);
@@ -740,6 +759,8 @@ function RoomInner() {
     socket.on('user-kicked', handleUserKicked);
     socket.on('error-occurred', handleError);
     socket.on('queue:updated', handleQueueUpdated);
+    socket.on('history:updated', handleHistoryUpdated);
+    socket.on('activity:updated', handleActivityUpdated);
 
     return () => {
       socket.off('room-joined', handleRoomJoined);
@@ -754,6 +775,8 @@ function RoomInner() {
       socket.off('user-kicked', handleUserKicked);
       socket.off('error-occurred', handleError);
       socket.off('queue:updated', handleQueueUpdated);
+      socket.off('history:updated', handleHistoryUpdated);
+      socket.off('activity:updated', handleActivityUpdated);
     };
   }, [socket, navigate, addToast]);
 
@@ -825,6 +848,7 @@ function RoomInner() {
         handleKickUser={handleKickUser}
         unreadMessages={unreadMessages}
         queue={queue}
+        history={history}
       />
     </MediaProvider>
   );
