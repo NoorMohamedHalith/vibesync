@@ -6,7 +6,7 @@ const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
 const { initializeFirebase } = require('./config/firebase');
-const { setupSocketHandlers, connectedUsers } = require('./handlers/socketHandlers');
+const { setupSocketHandlers, connectedUsers, roomQueues } = require('./handlers/socketHandlers');
 
 // ── Configuration ───────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
@@ -184,7 +184,12 @@ app.use('/api/*', (_req, res) => {
 });
 
 // ── Socket.IO handlers ─────────────────────────────────────────────────────
+const registerExtensionHandlers = require('./handlers/extensionHandlers');
 setupSocketHandlers(io, db);
+
+io.on('connection', (socket) => {
+  registerExtensionHandlers(io, socket, connectedUsers, roomQueues, db);
+});
 
 // ── Start server ────────────────────────────────────────────────────────────
 server.listen(PORT, () => {

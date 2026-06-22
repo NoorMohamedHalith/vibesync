@@ -1817,4 +1817,4 @@ function setupSocketHandlers(io, db) {
   console.log('[VibeSync] Socket handlers registered');
 }
 
-module.exports = { setupSocketHandlers, connectedUsers };
+module.exports = { setupSocketHandlers, connectedUsers, roomQueues };

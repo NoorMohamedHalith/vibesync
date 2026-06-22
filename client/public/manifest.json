@@ -1,0 +1,15 @@
+{
+  "short_name": "VibeSync",
+  "name": "VibeSync Watch Party",
+  "icons": [
+    {
+      "src": "logo.jpg",
+      "type": "image/jpeg",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#0a0118",
+  "background_color": "#0a0118"
+}

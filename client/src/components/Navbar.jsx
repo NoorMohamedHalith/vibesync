@@ -1,12 +1,15 @@
 import { useTheme } from '../context/ThemeContext';
 import { useSocket } from '../context/SocketContext';
 import { useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import SocialSuiteDashboard from './extensions/SocialSuiteDashboard';
 
 function Navbar() {
   const { isDark, toggleTheme } = useTheme();
-  const { isConnected } = useSocket();
+  const { isConnected, socket } = useSocket();
   const location = useLocation();
   const isInRoom = location.pathname.startsWith('/room/');
+  const [showSuite, setShowSuite] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 glass-strong">
@@ -55,6 +58,14 @@ function Navbar() {
                 />
               </div>
             )}
+
+            {/* Social Suite */}
+            <button
+              onClick={() => setShowSuite(true)}
+              className="px-3.5 py-1.5 text-xs font-bold text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/25 rounded-xl transition-all shadow-[0_0_12px_rgba(139,92,246,0.15)] flex items-center gap-1 shrink-0"
+            >
+              <span>🚀 Social Suite</span>
+            </button>
 
             {/* Theme toggle */}
             <button
@@ -107,6 +118,14 @@ function Navbar() {
           </div>
         </div>
       </div>
+      {showSuite && (
+        <SocialSuiteDashboard
+          socket={socket}
+          roomId={null}
+          username={localStorage.getItem('vibesync-username') || 'Guest'}
+          onClose={() => setShowSuite(false)}
+        />
+      )}
     </header>
   );
 }

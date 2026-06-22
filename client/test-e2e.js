@@ -231,18 +231,65 @@ clientA.on('history:updated', ({ history: roomHistory }) => {
     const histItem = roomHistory.find((h) => h.videoId === 'song-2-id');
     if (histItem) {
       console.log('[E2E Test] Video ended -> Alice receives history:updated with song-2-id: SUCCESS');
-      console.log('[E2E Test] ALL COLLABORATIVE STARTUP PHASE 1 E2E TESTS PASSED!');
-      clientA.disconnect();
-      clientB.disconnect();
-      process.exit(0);
+      currentStep = 13;
+      
+      // Step 13: Test VibeBot message
+      console.log('[E2E Test] Step 13: Alice asks VibeBot to set mood to "Romantic Tamil"...');
+      clientA.emit('vibebot:message', { roomId, text: 'Play romantic Tamil songs' });
     }
+  }
+});
+
+clientB.on('new-message', (msg) => {
+  if (currentStep === 13 && msg.username === 'VibeBot AI 🤖') {
+    console.log('[E2E Test] VibeBot AI responds: SUCCESS (msg =', msg.text, ')');
+    currentStep = 14;
+    
+    // Step 14: Bob joins VibeSpace social area
+    console.log('[E2E Test] Step 14: Bob joins VibeSpace 2D proximity map...');
+    clientB.emit('vibespace:join', { roomId, avatar: 'avatar-1' });
+  }
+});
+
+clientA.on('vibespace:sync', ({ participants: plist }) => {
+  if (currentStep === 14) {
+    const bobParticipant = plist.find(p => p.username === 'Bob');
+    if (bobParticipant) {
+      console.log('[E2E Test] Bob joins VibeSpace -> Alice receives spaces sync list: SUCCESS');
+      currentStep = 15;
+      
+      // Step 15: Alice walks/moves in VibeSpace
+      console.log('[E2E Test] Step 15: Alice moves avatar to x=250, y=300...');
+      clientA.emit('vibespace:move', { roomId, x: 250, y: 300 });
+    }
+  }
+});
+
+clientB.on('vibespace:updated', ({ socketId, x, y }) => {
+  if (currentStep === 15 && x === 250 && y === 300) {
+    console.log('[E2E Test] Alice walks -> Bob receives coordinates update: SUCCESS');
+    currentStep = 16;
+    
+    // Step 16: Karaoke lyrics highlight sync
+    console.log('[E2E Test] Step 16: Bob synchronizes karaoke lyrics line...');
+    clientB.emit('karaoke:lyrics:sync', { roomId, lyricsLine: 'Unakkul Naane Urugum Iravil...', timeOffset: 12 });
+  }
+});
+
+clientA.on('karaoke:lyrics:highlighted', ({ lyricsLine, timeOffset }) => {
+  if (currentStep === 16 && lyricsLine.includes('Unakkul Naane')) {
+    console.log('[E2E Test] Bob syncs lyrics -> Alice receives highlight notification: SUCCESS');
+    console.log('[E2E Test] ALL STARTUP EXTENSION SOCKET TESTS PASSED SUCCESSFULLY!');
+    clientA.disconnect();
+    clientB.disconnect();
+    process.exit(0);
   }
 });
 
 // Set a timeout to prevent hanging if anything fails
 setTimeout(() => {
-  console.error(`[E2E Test] Test timed out after 15 seconds! Failed at step ${currentStep}`);
+  console.error(`[E2E Test] Test timed out after 25 seconds! Failed at step ${currentStep}`);
   clientA.disconnect();
   clientB.disconnect();
   process.exit(1);
-}, 15000);
+}, 25000);

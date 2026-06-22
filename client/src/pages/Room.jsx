@@ -14,6 +14,7 @@ import Whiteboard from '../components/Whiteboard';
 import GameManager from '../components/GameManager';
 import ErrorBoundary from '../components/ErrorBoundary';
 import RecommendedForYou from '../components/RecommendedForYou';
+import SocialSuiteDashboard from '../components/extensions/SocialSuiteDashboard';
 
 function RoomContent({
   room,
@@ -54,6 +55,7 @@ function RoomContent({
   const { socket } = useSocket();
   const { addToast } = useToast();
   const [activeMainView, setActiveMainView] = useState('youtube');
+  const [showSuite, setShowSuite] = useState(false);
 
   // When video ends, signal server to advance queue
   const handleVideoEnd = useCallback(() => {
@@ -223,6 +225,18 @@ function RoomContent({
               Arcade Games
             </span>
           </button>
+
+          {/* Social Suite */}
+          <button
+            onClick={() => setShowSuite(true)}
+            className="p-3.5 rounded-2xl transition-all duration-300 group relative border border-transparent text-violet-400 hover:text-white hover:bg-violet-500/25 hover:border-violet-500/30"
+            title="Social Suite"
+          >
+            <span className="text-xl">🚀</span>
+            <span className="absolute left-24 px-2 py-1 rounded bg-gray-950 border border-white/10 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap z-50">
+              Social Suite
+            </span>
+          </button>
         </nav>
 
         {/* 2. CENTER: Video/Stage area */}
@@ -258,6 +272,12 @@ function RoomContent({
               }`}
             >
               🎮 Arcade
+            </button>
+            <button
+              onClick={() => setShowSuite(true)}
+              className="flex-1 py-2.5 text-xs font-bold rounded-xl transition-all text-violet-400"
+            >
+              🚀 Social
             </button>
           </div>
 
@@ -528,6 +548,14 @@ function RoomContent({
           roomId={room?.roomId}
           roomName={room?.roomName}
           onClose={() => setShowShare(false)}
+        />
+      )}
+      {showSuite && (
+        <SocialSuiteDashboard
+          socket={socket}
+          roomId={room?.roomId}
+          username={username}
+          onClose={() => setShowSuite(false)}
         />
       )}
     </div>
