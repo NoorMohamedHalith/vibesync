@@ -1,0 +1,211 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: 200ms;
+    transition-timing-function: ease-in-out;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-[#0a0118] dark:text-gray-100;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-brand-400/40 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-brand-400/60;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(139, 92, 246, 0.4) transparent;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/60 dark:bg-white/[0.06] backdrop-blur-xl border border-white/30 dark:border-white/[0.08] shadow-glass dark:shadow-glass-dark;
+  }
+
+  .glass-strong {
+    @apply bg-white/80 dark:bg-white/[0.1] backdrop-blur-2xl border border-white/40 dark:border-white/[0.12] shadow-glass dark:shadow-glass-dark;
+  }
+
+  .glass-subtle {
+    @apply bg-white/40 dark:bg-white/[0.04] backdrop-blur-lg border border-white/20 dark:border-white/[0.06];
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-brand-400 via-neon-purple to-neon-pink bg-clip-text text-transparent;
+  }
+
+  .gradient-text-alt {
+    @apply bg-gradient-to-r from-neon-blue via-brand-400 to-neon-purple bg-clip-text text-transparent;
+  }
+
+  .btn-primary {
+    @apply relative inline-flex items-center justify-center px-6 py-3 rounded-xl font-semibold text-white
+           bg-gradient-to-r from-brand-600 to-brand-500
+           hover:from-brand-500 hover:to-neon-purple
+           shadow-glow-sm hover:shadow-glow
+           transform hover:scale-[1.02] active:scale-[0.98]
+           transition-all duration-300 ease-out
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-glow-sm;
+  }
+
+  .btn-secondary {
+    @apply relative inline-flex items-center justify-center px-6 py-3 rounded-xl font-semibold
+           text-brand-600 dark:text-brand-300
+           bg-brand-100/60 dark:bg-brand-900/30
+           border border-brand-200 dark:border-brand-700/40
+           hover:bg-brand-100 dark:hover:bg-brand-900/50
+           transform hover:scale-[1.02] active:scale-[0.98]
+           transition-all duration-300 ease-out;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl
+           bg-white/70 dark:bg-white/[0.06]
+           border border-gray-200 dark:border-white/[0.1]
+           text-gray-900 dark:text-gray-100
+           placeholder:text-gray-400 dark:placeholder:text-gray-500
+           focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50
+           backdrop-blur-sm
+           transition-all duration-300;
+  }
+
+  .neon-glow {
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.4),
+                0 0 30px rgba(139, 92, 246, 0.2),
+                0 0 60px rgba(139, 92, 246, 0.1);
+  }
+
+  .neon-glow-pink {
+    box-shadow: 0 0 15px rgba(232, 121, 249, 0.4),
+                0 0 30px rgba(232, 121, 249, 0.2),
+                0 0 60px rgba(232, 121, 249, 0.1);
+  }
+
+  .neon-border {
+    @apply border border-brand-500/30;
+    box-shadow: inset 0 0 20px rgba(139, 92, 246, 0.05),
+                0 0 15px rgba(139, 92, 246, 0.15);
+  }
+}
+
+@layer utilities {
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  .animation-delay-400 {
+    animation-delay: 400ms;
+  }
+  .animation-delay-600 {
+    animation-delay: 600ms;
+  }
+  .animation-delay-1000 {
+    animation-delay: 1000ms;
+  }
+  .animation-delay-2000 {
+    animation-delay: 2000ms;
+  }
+}
+
+/* Animated background blobs */
+.bg-animated {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.bg-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.4;
+}
+
+.dark .bg-blob {
+  opacity: 0.2;
+}
+
+.bg-blob-1 {
+  width: 500px;
+  height: 500px;
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+  top: -10%;
+  left: -5%;
+  animation: blob 7s infinite;
+}
+
+.bg-blob-2 {
+  width: 400px;
+  height: 400px;
+  background: linear-gradient(135deg, #e879f9, #d946ef);
+  top: 40%;
+  right: -5%;
+  animation: blob 7s infinite 2s;
+}
+
+.bg-blob-3 {
+  width: 350px;
+  height: 350px;
+  background: linear-gradient(135deg, #38bdf8, #818cf8);
+  bottom: -5%;
+  left: 30%;
+  animation: blob 7s infinite 4s;
+}
+
+@keyframes blob {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+/* Player progress bar styling */
+.progress-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+  transition: transform 0.15s ease;
+}
+
+.progress-bar::-webkit-slider-thumb:hover {
+  transform: scale(1.3);
+}
+
+.progress-bar::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+}

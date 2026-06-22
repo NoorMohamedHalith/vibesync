@@ -1,0 +1,9 @@
+{
+  "name": "vibesync-root",
+  "version": "1.0.0",
+  "description": "VibeSync Root Workspace for Auto-Deployment",
+  "scripts": {
+    "prebuild": "npm install --prefix client",
+    "build": "npm run build --prefix client"
+  }
+}

@@ -1,0 +1,23 @@
+# Node
+node_modules/
+npm-debug.log
+
+# Env
+.env
+.env.local
+.env.production
+.env.example
+
+# Dev/build outputs
+dist/
+dist-ssr/
+*.local
+
+# Cache / Logs
+.eslintcache
+.logs/
+server/mock-db.json
+
+# OS files
+.DS_Store
+Thumbs.db
