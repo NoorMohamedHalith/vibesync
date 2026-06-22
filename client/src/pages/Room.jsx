@@ -4,6 +4,7 @@ import { useSocket } from '../context/SocketContext';
 import { useToast } from '../context/ToastContext';
 import { MediaProvider, useMedia } from '../context/MediaContext';
 import YouTubePlayer from '../components/YouTubePlayer';
+import YouTubeRecommendations from '../components/YouTubeRecommendations';
 import Chat from '../components/Chat';
 import ParticipantsList from '../components/ParticipantsList';
 import ShareModal from '../components/ShareModal';
@@ -11,7 +12,6 @@ import FileShare from '../components/FileShare';
 import VideoGrid from '../components/VideoGrid';
 import Whiteboard from '../components/Whiteboard';
 import GameManager from '../components/GameManager';
-import YouTubeSearchModal from '../components/YouTubeSearchModal';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 function RoomContent({
@@ -51,7 +51,23 @@ function RoomContent({
   const { socket } = useSocket();
   const { addToast } = useToast();
   const [activeMainView, setActiveMainView] = useState('youtube');
-  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [autoplay, setAutoplay] = useState(false);
+  const [recommendations, setRecommendations] = useState([]);
+
+  // Autoplay: when current video ends, emit change to first recommendation
+  const handleVideoEnd = useCallback(() => {
+    if (!autoplay || !isAdmin || !socket) return;
+    if (recommendations.length > 0) {
+      const next = recommendations.find((v) => v.videoId !== videoId);
+      if (next) {
+        socket.emit('video-change', {
+          roomId: room?.roomId,
+          videoUrl: `https://www.youtube.com/watch?v=${next.videoId}`,
+          videoTitle: next.title,
+        });
+      }
+    }
+  }, [autoplay, isAdmin, socket, recommendations, videoId, room]);
 
   // Auto-join WebRTC call upon mounting and room details set
   useEffect(() => {
@@ -260,41 +276,43 @@ function RoomContent({
 
           {/* Main Stage Viewports */}
           {activeMainView === 'youtube' && (
-            <div className="flex flex-col gap-4 flex-1">
-              {/* YouTube search/load panel */}
-              {isAdmin && (
-                <div className="flex flex-col sm:flex-row items-center gap-4 bg-white/5 border border-white/10 p-4 rounded-3xl backdrop-blur-xl shrink-0 animate-fade-in">
-                  <button
-                    onClick={() => setIsSearchModalOpen(true)}
-                    type="button"
-                    className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-red-600/10 border border-red-500/30 text-red-500 hover:bg-red-600/20 shadow-[0_0_15px_rgba(220,38,38,0.2)] hover:shadow-[0_0_25px_rgba(220,38,38,0.4)] transition-all font-semibold group w-full sm:w-auto justify-center"
-                  >
-                    <svg className="w-5 h-5 fill-current text-red-500 group-hover:scale-110 transition-transform duration-300" viewBox="0 0 24 24">
+            <div className="flex flex-col lg:flex-row gap-4 flex-1">
+              {/* Left: Player + Search */}
+              <div className="flex flex-col gap-3 flex-1 min-w-0">
+                {/* Currently Playing title pill */}
+                {videoTitle && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-red-600/10 border border-red-500/20 rounded-2xl shrink-0 animate-fade-in">
+                    <svg className="w-4 h-4 text-red-400 fill-current shrink-0" viewBox="0 0 24 24">
                       <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z" />
                     </svg>
-                    <span>Search or Paste Video</span>
-                  </button>
-
-                  <div className="flex-1 text-center sm:text-left min-w-0">
-                    {videoTitle ? (
-                      <div>
-                        <span className="text-[10px] text-violet-400 font-semibold uppercase tracking-widest block">Currently Playing</span>
-                        <h3 className="text-sm font-bold text-gray-200 truncate leading-snug">{videoTitle}</h3>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-400">Click Search to load a video and start the party!</p>
-                    )}
+                    <span className="text-[10px] text-red-400 font-bold uppercase tracking-widest shrink-0">Now Playing</span>
+                    <span className="text-xs text-gray-300 font-semibold truncate">{videoTitle}</span>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* YouTube Player */}
-              <div className="flex-1 max-w-full min-h-[350px]">
-                <YouTubePlayer
+                {/* YouTube Player (with inline search for admin) */}
+                <div className="flex-1 min-h-[280px]">
+                  <YouTubePlayer
+                    videoId={videoId}
+                    socket={room ? socket : null}
+                    roomId={room?.roomId}
+                    isAdmin={isAdmin}
+                    onVideoEnd={handleVideoEnd}
+                  />
+                </div>
+              </div>
+
+              {/* Right: Recommendations sidebar (desktop) */}
+              <div className="lg:w-72 xl:w-80 shrink-0 bg-white/5 border border-white/10 rounded-3xl overflow-hidden flex flex-col" style={{ minHeight: '420px', maxHeight: '680px' }}>
+                <YouTubeRecommendations
                   videoId={videoId}
-                  socket={room ? socket : null}
+                  videoTitle={videoTitle}
+                  socket={socket}
                   roomId={room?.roomId}
                   isAdmin={isAdmin}
+                  autoplay={autoplay}
+                  onAutoplayChange={setAutoplay}
+                  onRecommendationsLoaded={setRecommendations}
                 />
               </div>
             </div>
@@ -510,14 +528,6 @@ function RoomContent({
           onClose={() => setShowShare(false)}
         />
       )}
-
-      {/* YouTube Search Modal */}
-      <YouTubeSearchModal
-        isOpen={isSearchModalOpen}
-        onClose={() => setIsSearchModalOpen(false)}
-        roomId={room?.roomId}
-        socket={socket}
-      />
     </div>
   );
 }
