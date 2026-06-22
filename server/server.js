@@ -22,10 +22,12 @@ const ALLOWED_ORIGINS = [
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    if (
+    const isAllowed =
       ALLOWED_ORIGINS.indexOf(origin) !== -1 ||
-      /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
-    ) {
+      /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+      /\.vercel\.app$/.test(origin);
+      
+    if (isAllowed) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
